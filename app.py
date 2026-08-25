@@ -28,7 +28,7 @@ INITIAL_MEMBERS = [
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
-# CSS 視覺修正 (含禁用反白樣式)
+# CSS 響應式與字體自適應修正 (含主標題優化)
 # ==========================================
 st.markdown("""
     <style>
@@ -37,8 +37,17 @@ st.markdown("""
         max-width: 100vw;
         overflow-x: hidden;
     }
+
+    /* 2. 主標題 (st.title / H1) 響應式字體與防縮放暴撐 */
+    h1 {
+        font-size: clamp(22px, 6vw, 32px) !important; /* 隨螢幕縮放，最大限制 32px */
+        line-height: 1.3 !important;
+        word-break: break-word !important;            /* 防止手機寬度不夠時文字溢出 */
+        padding-top: 0.2rem !important;
+        padding-bottom: 0.5rem !important;
+    }
     
-    /* 2. 所有按鈕基礎設定：使用相對單位與防破版機制 */
+    /* 3. 所有按鈕基礎設定：使用相對單位與防破版機制 */
     div[data-testid="stButton"] button {
         width: 100% !important;
         white-space: normal !important;      /* 允許文字適當換行 */
@@ -47,9 +56,8 @@ st.markdown("""
         box-sizing: border-box !important;
     }
 
-    /* 3. 按鈕文字通用設定：採用 clamp() 實現響應式字體大小 */
+    /* 4. 按鈕文字通用設定：採用 clamp() 實現響應式字體大小 */
     div[data-testid="stButton"] button p {
-        /* clamp(最小字體, 隨螢幕寬度變化, 最大字體) */
         font-size: clamp(18px, 5vw, 26px) !important;
         font-weight: 800 !important;
         letter-spacing: 0.5px !important;
@@ -57,7 +65,7 @@ st.markdown("""
         padding: 2px 0 !important;
     }
 
-    /* 4. 次要按鈕（名字圖框 & 補簽圖框）：動態高度 */
+    /* 5. 次要按鈕（名字圖框 & 補簽圖框）：動態高度 */
     div[data-testid="stButton"] button[kind="secondary"] {
         min-height: 3em !important;
         height: auto !important;             /* 讓高度隨字體大小自適應 */
@@ -74,7 +82,7 @@ st.markdown("""
         border-color: #0369A1 !important;
     }
 
-    /* 5. 禁用（未設定名字）的反白按鈕樣式 */
+    /* 6. 禁用（未設定名字）的反白按鈕樣式 */
     div[data-testid="stButton"] button:disabled {
         background-color: #F1F5F9 !important;
         border: 2px dashed #94A3B8 !important;
@@ -83,11 +91,11 @@ st.markdown("""
     }
     div[data-testid="stButton"] button:disabled p {
         color: #94A3B8 !important;
-        font-size: clamp(14px, 4vw, 20px) !important; /* 未啟用按鈕字體稍微調小 */
+        font-size: clamp(14px, 4vw, 20px) !important;
         font-weight: normal !important;
     }
 
-    /* 6. 主要按鈕（本週簽到大綠按鈕） */
+    /* 7. 主要按鈕（本週簽到大綠按鈕） */
     div[data-testid="stButton"] button[kind="primary"] {
         min-height: 3.2em !important;
         height: auto !important;
@@ -100,20 +108,23 @@ st.markdown("""
     }
     div[data-testid="stButton"] button[kind="primary"] p {
         color: #FFFFFF !important;
-        font-size: clamp(20px, 6vw, 30px) !important; /* 保持大字醒目但不爆框 */
+        font-size: clamp(20px, 6vw, 30px) !important;
     }
     div[data-testid="stButton"] button[kind="primary"]:hover {
         background-color: #047857 !important;
     }
 
-    /* 7. 分頁選單自適應 */
+    /* 8. 分頁選單自適應 */
     div[data-testid="stRadio"] label p {
         font-size: clamp(16px, 4.5vw, 20px) !important;
         font-weight: bold !important;
     }
 
-    /* 8. 極小螢幕手機特別微調 */
+    /* 9. 極小螢幕手機微調 */
     @media (max-width: 360px) {
+        h1 {
+            font-size: 20px !important;
+        }
         div[data-testid="stButton"] button p {
             font-size: 18px !important;
         }
