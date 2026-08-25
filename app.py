@@ -9,7 +9,7 @@ import os
 DATA_FILE = "church_attendance.csv"
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
-ADMIN_PASSWORD = "1234"  # 後台密碼
+ADMIN_PASSWORD = "church_admin"  # 後台密碼
 
 # 4年讀經計畫設定：今年為第 2 年
 PLAN_YEAR = 2 
@@ -17,7 +17,7 @@ PLAN_YEAR = 2
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
-# CSS 視覺修正
+# CSS 視覺修正 (含禁用反白樣式)
 # ==========================================
 st.markdown("""
     <style>
@@ -48,7 +48,19 @@ st.markdown("""
         border-color: #0369A1 !important;
     }
 
-    /* 3. 主要按鈕（本週簽到大綠按鈕） */
+    /* 3. 禁用（未設定名字）的反白按鈕樣式 */
+    div[data-testid="stButton"] button:disabled {
+        background-color: #F1F5F9 !important;
+        border: 2px dashed #94A3B8 !important;
+        box-shadow: none !important;
+        cursor: not-allowed !important;
+    }
+    div[data-testid="stButton"] button:disabled p {
+        color: #94A3B8 !important;          /* 文字灰色反白 */
+        font-weight: normal !important;
+    }
+
+    /* 4. 主要按鈕（本週簽到大綠按鈕） */
     div[data-testid="stButton"] button[kind="primary"] {
         height: 3.2em !important;
         min-height: 3.2em !important;
@@ -67,13 +79,13 @@ st.markdown("""
         background-color: #047857 !important;
     }
 
-    /* 4. 分頁選單字體 */
+    /* 5. 分頁選單字體 */
     div[data-testid="stRadio"] label p {
         font-size: 20px !important;
         font-weight: bold !important;
     }
     
-    /* 5. 手機版邊距 */
+    /* 6. 手機版邊距 */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
@@ -172,7 +184,7 @@ with tab_user:
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
 
     # ----------------------------------------------------
-    # 第一層：名字點選圖框選單
+    # 第一層：名字點選圖框選單 (手機/電腦雙優化排序 + 未設定反白)
     # ----------------------------------------------------
     if st.session_state.current_member is None:
         st.markdown(f"**當前進度：`{current_week_display}`**")
@@ -191,13 +203,47 @@ with tab_user:
             
             st.write("👇 **請點選您的名字圖框：**")
             
-            cols = st.columns(2)
-            for idx, name in enumerate(current_page_members):
-                with cols[idx % 2]:
+            # 【優化排序】將 10 個人分為左右兩欄，使手機單欄時順序為 1->2->3->4...
+            mid = (len(current_page_members) + 1) // 2
+            left_col_members = current_page_members[:mid]
+            right_col_members = current_page_members[mid:]
+            
+            col1, col2 = st.columns(2)
+            
+            # 左欄渲染
+            with col1:
+                for name in left_col_members:
+                    # 判斷是否為預設名稱 (包含 "會友 ")
+                    is_placeholder = name.startswith("會友 ")
                     is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
-                    status_icon = "✅" if is_signed else "👤"
                     
-                    if st.button(f"{status_icon} {name}", key=f"select_{name}", type="secondary", use_container_width=True):
+                    if is_placeholder:
+                        btn_label = f"🔒 {name} (未啟用)"
+                        is_disabled = True
+                    else:
+                        status_icon = "✅" if is_signed else "👤"
+                        btn_label = f"{status_icon} {name}"
+                        is_disabled = False
+                        
+                    if st.button(btn_label, key=f"select_{name}", type="secondary", disabled=is_disabled, use_container_width=True):
+                        st.session_state.current_member = name
+                        st.rerun()
+
+            # 右欄渲染
+            with col2:
+                for name in right_col_members:
+                    is_placeholder = name.startswith("會友 ")
+                    is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
+                    
+                    if is_placeholder:
+                        btn_label = f"🔒 {name} (未啟用)"
+                        is_disabled = True
+                    else:
+                        status_icon = "✅" if is_signed else "👤"
+                        btn_label = f"{status_icon} {name}"
+                        is_disabled = False
+                        
+                    if st.button(btn_label, key=f"select_{name}", type="secondary", disabled=is_disabled, use_container_width=True):
                         st.session_state.current_member = name
                         st.rerun()
 
@@ -241,9 +287,19 @@ with tab_user:
         if missing_weeks_info:
             st.warning(f"📌 共有 **{len(missing_weeks_info)}** 週尚未完成，點擊圖框補簽：")
             
-            cols_missing = st.columns(2)
-            for idx, item in enumerate(missing_weeks_info):
-                with cols_missing[idx % 2]:
+            mid_m = (len(missing_weeks_info) + 1) // 2
+            left_missing = missing_weeks_info[:mid_m]
+            right_missing = missing_weeks_info[mid_m:]
+            
+            mc1, mc2 = st.columns(2)
+            with mc1:
+                for item in left_missing:
+                    if st.button(f"🟡 {item['display']}", key=f"btn_miss_{item['key']}", type="secondary", use_container_width=True):
+                        save_record(item["key"], member_name)
+                        st.toast(f"✅ 已成功補簽 `{item['display']}`！")
+                        st.rerun()
+            with mc2:
+                for item in right_missing:
                     if st.button(f"🟡 {item['display']}", key=f"btn_miss_{item['key']}", type="secondary", use_container_width=True):
                         save_record(item["key"], member_name)
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
@@ -263,7 +319,7 @@ with tab_admin:
         
         sub1, sub2, sub3 = st.tabs(["📊 多維度統計", "👥 名單管理 (改名/新增/刪除)", "⚡ 手動代簽"])
         
-        # 1. 防爆表格統計報表
+        # 1. 統計報表
         with sub1:
             st.markdown(f"### 🔍 第 {PLAN_YEAR} 年彈性時間區間讀經統計")
             filter_mode = st.selectbox("請選擇查詢時間基準：", [
@@ -291,11 +347,8 @@ with tab_admin:
                 
             if not df_attendance.empty:
                 filtered_df = df_attendance[df_attendance["week_key"].isin(target_weeks)]
-                
-                # 防重複核心修正：自動剔除重複簽到紀錄，保留最新的一筆
                 clean_df = filtered_df.drop_duplicates(subset=["member_name", "week_key"], keep="last")
                 
-                # 使用 pivot_table 取代 pivot
                 pivot_df = clean_df.pivot_table(index="member_name", columns="week_key", values="timestamp", aggfunc="first")
                 pivot_df = pivot_df.reindex(index=member_list, columns=target_weeks)
                 
