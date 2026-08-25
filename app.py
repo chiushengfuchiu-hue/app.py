@@ -362,6 +362,3 @@ with tab_admin:
     elif pwd != "":
         st.error("密碼錯誤！")
                 st.rerun()
-                
-    elif pwd != "":
-        st.error("密碼錯誤！")
