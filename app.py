@@ -9,10 +9,15 @@ import os
 DATA_FILE = "church_attendance.csv"
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
-ADMIN_PASSWORD = "1234"  # 後台密碼
+SCHEDULE_RECORD_FILE = "schedule_records.csv"  # 記錄週別與對應圖片檔名的對照表
+SCHEDULE_DIR = "schedules_img"                 # 儲存進度圖的資料夾
+ADMIN_PASSWORD = "church_admin"                # 後台密碼
 
 # 4年讀經計畫設定：今年為第 2 年
 PLAN_YEAR = 2 
+
+# 確保圖片儲存資料夾存在
+os.makedirs(SCHEDULE_DIR, exist_ok=True)
 
 # 圖片辨識出的 34 位真實名單底稿
 INITIAL_MEMBERS = [
@@ -28,35 +33,31 @@ INITIAL_MEMBERS = [
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
-# CSS 響應式與字體自適應修正 (含主標題優化)
+# CSS 響應式與字體自適應修正
 # ==========================================
 st.markdown("""
     <style>
-    /* 1. 全域容器調整：允許動態縮放與防爆頁面 */
     html, body {
         max-width: 100vw;
         overflow-x: hidden;
     }
 
-    /* 2. 主標題 (st.title / H1) 響應式字體與防縮放暴撐 */
     h1 {
-        font-size: clamp(22px, 6vw, 32px) !important; /* 隨螢幕縮放，最大限制 32px */
+        font-size: clamp(22px, 6vw, 32px) !important;
         line-height: 1.3 !important;
-        word-break: break-word !important;            /* 防止手機寬度不夠時文字溢出 */
+        word-break: break-word !important;
         padding-top: 0.2rem !important;
         padding-bottom: 0.5rem !important;
     }
     
-    /* 3. 所有按鈕基礎設定：使用相對單位與防破版機制 */
     div[data-testid="stButton"] button {
         width: 100% !important;
-        white-space: normal !important;      /* 允許文字適當換行 */
-        word-break: break-word !important;   /* 避免長字溢出 */
+        white-space: normal !important;
+        word-break: break-word !important;
         line-height: 1.2 !important;
         box-sizing: border-box !important;
     }
 
-    /* 4. 按鈕文字通用設定：採用 clamp() 實現響應式字體大小 */
     div[data-testid="stButton"] button p {
         font-size: clamp(18px, 5vw, 26px) !important;
         font-weight: 800 !important;
@@ -65,10 +66,9 @@ st.markdown("""
         padding: 2px 0 !important;
     }
 
-    /* 5. 次要按鈕（名字圖框 & 補簽圖框）：動態高度 */
     div[data-testid="stButton"] button[kind="secondary"] {
         min-height: 3em !important;
-        height: auto !important;             /* 讓高度隨字體大小自適應 */
+        height: auto !important;
         padding: 8px 6px !important;
         border-radius: 12px !important;
         border: 2px solid #0284C7 !important;
@@ -82,7 +82,6 @@ st.markdown("""
         border-color: #0369A1 !important;
     }
 
-    /* 6. 禁用（未設定名字）的反白按鈕樣式 */
     div[data-testid="stButton"] button:disabled {
         background-color: #F1F5F9 !important;
         border: 2px dashed #94A3B8 !important;
@@ -95,7 +94,6 @@ st.markdown("""
         font-weight: normal !important;
     }
 
-    /* 7. 主要按鈕（本週簽到大綠按鈕） */
     div[data-testid="stButton"] button[kind="primary"] {
         min-height: 3.2em !important;
         height: auto !important;
@@ -114,13 +112,11 @@ st.markdown("""
         background-color: #047857 !important;
     }
 
-    /* 8. 分頁選單自適應 */
     div[data-testid="stRadio"] label p {
         font-size: clamp(16px, 4.5vw, 20px) !important;
         font-weight: bold !important;
     }
 
-    /* 9. 極小螢幕手機微調 */
     @media (max-width: 360px) {
         h1 {
             font-size: 20px !important;
@@ -136,19 +132,15 @@ st.markdown("""
 # 2. 資料處理函式
 # ==========================================
 def load_members():
-    # 建立正確的 50 人名單基底 (前 34 位為真實名字)
     default_members = list(INITIAL_MEMBERS)
     for i in range(len(INITIAL_MEMBERS), 50):
         default_members.append(f"會友 {i+1:02d}")
         
     need_reset = False
-    
     if os.path.exists(MEMBERS_FILE):
         try:
             df_m = pd.read_csv(MEMBERS_FILE)
             current_names = df_m["member_name"].tolist() if not df_m.empty else []
-            
-            # 如果發現舊檔案裡包含 "會友 01"，表示曾被重置過，強制修復為真實名單
             if "會友 01" in current_names or len(current_names) < 34:
                 need_reset = True
         except Exception:
@@ -213,6 +205,34 @@ def get_weekly_verse(week_num):
             pass
     return fallback
 
+# 進度圖管理相關函式
+def get_schedule_image_path(week_key):
+    if os.path.exists(SCHEDULE_RECORD_FILE):
+        df_s = pd.read_csv(SCHEDULE_RECORD_FILE)
+        match = df_s[df_s["week_key"] == week_key]
+        if not match.empty:
+            img_path = match.iloc[0]["image_path"]
+            if os.path.exists(img_path):
+                return img_path
+    return None
+
+def save_schedule_record(week_key, uploaded_file):
+    file_extension = uploaded_file.name.split(".")[-1]
+    file_path = os.path.join(SCHEDULE_DIR, f"{week_key}.{file_extension}")
+    
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+        
+    if os.path.exists(SCHEDULE_RECORD_FILE):
+        df_s = pd.read_csv(SCHEDULE_RECORD_FILE)
+    else:
+        df_s = pd.DataFrame(columns=["week_key", "image_path"])
+        
+    df_s = df_s[df_s["week_key"] != week_key]
+    new_row = pd.DataFrame([{"week_key": week_key, "image_path": file_path}])
+    df_s = pd.concat([df_s, new_row], ignore_index=True)
+    df_s.to_csv(SCHEDULE_RECORD_FILE, index=False, encoding="utf-8-sig")
+
 # ==========================================
 # 3. Session State 狀態初始化
 # ==========================================
@@ -228,22 +248,45 @@ df_members = load_members()
 member_list = df_members["member_name"].tolist()
 df_attendance = load_attendance()
 
-st.title(f"📖 四年讀經計畫進度簽到（第 {PLAN_YEAR} 年）")
+st.title(f"📖 教會讀經簽到（{current_week_display}）")
 
-tab_user, tab_admin = st.tabs(["✍️ 會友簽到專區", "🔒 後台統計查詢"])
+tab_user, tab_admin = st.tabs(["✍️ 會友簽到專區", "🔒 後台統計與管理"])
 
 # ------------------------------------------
-# TAB 1: 前台 - 手機滿框大字簽到
+# TAB 1: 前台 - 手機滿框大字簽到與進度圖查詢
 # ------------------------------------------
 with tab_user:
     verse_info = get_weekly_verse(current_week_num)
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
 
     # ----------------------------------------------------
-    # 第一層：名字點選圖框選單 (手機/電腦雙優化排序 + 未設定反白)
+    # 進度圖表展開與歷史查詢專區
+    # ----------------------------------------------------
+    with st.expander("🖼️ 點此查看【本週/歷史進度對照表】", expanded=False):
+        query_mode = st.radio("選擇查詢模式：", ["查詢本週進度圖", "查詢歷史週別進度圖"], horizontal=True)
+        
+        if "本週" in query_mode:
+            target_img_week = current_week_key
+            target_img_label = current_week_display
+        else:
+            all_weeks = [f"Y{PLAN_YEAR}-W{w:02d} (第 {w} 週)" for w in range(1, 53)]
+            selected_w_str = st.selectbox("選擇要查看的週別：", all_weeks, index=max(0, current_week_num-1))
+            target_img_week = selected_w_str.split(" ")[0]
+            target_img_label = selected_w_str
+            
+        img_path = get_schedule_image_path(target_img_week)
+        if img_path:
+            st.image(img_path, caption=f"【{target_img_label}】進度表", use_container_width=True)
+        else:
+            st.warning(f"📌 目前尚未上傳【{target_img_label}】的進度表圖片，敬請期待管理者更新！")
+
+    st.divider()
+
+    # ----------------------------------------------------
+    # 第一層：名字點選圖框選單
     # ----------------------------------------------------
     if st.session_state.current_member is None:
-        st.markdown(f"**當前進度：`{current_week_display}`**")
+        st.markdown(f"**當前簽到進度：`{current_week_display}`**")
         
         chunk_size = 10
         total_members = len(member_list)
@@ -259,14 +302,12 @@ with tab_user:
             
             st.write("👇 **請點選您的名字圖框：**")
             
-            # 【優化排序】將 10 個人分為左右兩欄，使手機單欄時順序為 1->2->3->4...
             mid = (len(current_page_members) + 1) // 2
             left_col_members = current_page_members[:mid]
             right_col_members = current_page_members[mid:]
             
             col1, col2 = st.columns(2)
             
-            # 左欄渲染
             with col1:
                 for name in left_col_members:
                     is_placeholder = name.startswith("會友 ")
@@ -284,7 +325,6 @@ with tab_user:
                         st.session_state.current_member = name
                         st.rerun()
 
-            # 右欄渲染
             with col2:
                 for name in right_col_members:
                     is_placeholder = name.startswith("會友 ")
@@ -314,7 +354,6 @@ with tab_user:
             
         st.markdown(f"## 👤 {member_name} 的讀經專頁")
         
-        # 1. 本週簽到區塊
         st.markdown(f"### 📍 【本週進度】{current_week_display}")
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
         
@@ -328,7 +367,6 @@ with tab_user:
                 
         st.divider()
         
-        # 2. 補簽未完成進度
         st.markdown("### 🟡 【補簽未完成進度】")
         signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist()
         
@@ -363,16 +401,21 @@ with tab_user:
             st.success("🎉 太棒了！過去每一週的進度皆已完成！")
 
 # ------------------------------------------
-# TAB 2: 後台 - 資料管理
+# TAB 2: 後台 - 資料管理與進度圖上傳
 # ------------------------------------------
 with tab_admin:
-    st.subheader("🔒 管理者數據查詢與報表")
+    st.subheader("🔒 管理者數據與功能管理")
     pwd = st.text_input("請輸入管理者密碼：", type="password")
     
     if pwd == ADMIN_PASSWORD:
         st.success("身分驗證成功！")
         
-        sub1, sub2, sub3 = st.tabs(["📊 多維度統計", "👥 名單管理 (改名/新增/刪除)", "⚡ 手動代簽"])
+        sub1, sub2, sub3, sub4 = st.tabs([
+            "📊 多維度統計", 
+            "🖼️ 上傳/更新進度圖表", 
+            "👥 名單管理", 
+            "⚡ 手動代簽"
+        ])
         
         # 1. 統計報表
         with sub1:
@@ -414,7 +457,6 @@ with tab_admin:
                 result_df.insert(0, "完成率", (count_series / total_target_weeks * 100).round(1).astype(str) + "%")
                 result_df.insert(0, "完成週數", count_series.astype(str) + f" / {total_target_weeks}")
                 
-                st.write(f"顯示範圍：**{filter_mode}**（共 {total_target_weeks} 週）")
                 st.dataframe(result_df, use_container_width=True)
                 
                 csv_data = result_df.to_csv(index=True).encode('utf-8-sig')
@@ -422,8 +464,24 @@ with tab_admin:
             else:
                 st.info("尚無簽到紀錄。")
 
-        # 2. 名單管理
+        # 2. 上傳/更新進度圖表
         with sub2:
+            st.markdown("### 🖼️ 上傳每週讀經進度表圖片")
+            st.info("💡 每週製作好進度表圖片後，在此選擇對應週別並上傳，會友在前台點擊即可馬上看到！")
+            
+            upload_week_num = st.selectbox("選擇要上傳的週別：", list(range(1, 53)), index=current_week_num-1)
+            target_upload_key = f"Y{PLAN_YEAR}-W{upload_week_num:02d}"
+            
+            uploaded_schedule_file = st.file_uploader(f"上傳【第 {upload_week_num} 週】進度表圖片 (支援 JPG, PNG)", type=["png", "jpg", "jpeg"])
+            
+            if uploaded_schedule_file is not None:
+                st.image(uploaded_schedule_file, caption=f"預覽：第 {upload_week_num} 週進度表", use_container_width=True)
+                if st.button("🚀 確認儲存並發布此週進度圖"):
+                    save_schedule_record(target_upload_key, uploaded_schedule_file)
+                    st.success(f"🎉 成功發布第 {upload_week_num} 週進度表！會友現在即可在前台查看。")
+
+        # 3. 名單管理
+        with sub3:
             st.markdown("### ✏️ 修改會友姓名 (舊名換新名)")
             c1, c2 = st.columns(2)
             old_name_target = c1.selectbox("選擇要修改的會友：", member_list, key="rename_select")
@@ -438,7 +496,6 @@ with tab_admin:
                     st.warning("請輸入與原姓名不同的新名字！")
                     
             st.divider()
-            
             st.markdown("### ➕ 新增全新會友")
             add_name = st.text_input("輸入新會友姓名：")
             if st.button("➕ 確認新增"):
@@ -451,7 +508,6 @@ with tab_admin:
                     st.error("該會友姓名已存在！")
 
             st.divider()
-            
             st.markdown("### ❌ 移除會友")
             del_target = st.selectbox("選擇要移除的會友：", ["-- 請選擇 --"] + member_list, key="delete_select")
             if del_target != "-- 請選擇 --" and st.button(f"❌ 確定移除 {del_target}"):
@@ -460,8 +516,8 @@ with tab_admin:
                 st.success(f"已從名單中移除 {del_target}")
                 st.rerun()
 
-        # 3. 手動代簽
-        with sub3:
+        # 4. 手動代簽
+        with sub4:
             st.markdown("### ⚡ 管理者指定補簽")
             c1, c2 = st.columns(2)
             adm_m = c1.selectbox("會友：", member_list)
