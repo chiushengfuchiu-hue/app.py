@@ -27,39 +27,54 @@ INITIAL_MEMBERS = [
 
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
 
-# ==========================================
-# CSS 視覺修正 (含禁用反白樣式)
-# ==========================================
+/* ==========================================
+   CSS 響應式與字體自適應修正
+   ========================================== */
 st.markdown("""
     <style>
-    /* 1. 所有按鈕內部的文字通用大字樣式 */
-    div[data-testid="stButton"] button p {
-        font-size: 32px !important;
-        font-weight: 900 !important;
-        letter-spacing: 1px !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        line-height: 1.1 !important;
+    /* 1. 全域容器調整：允許動態縮放與防爆頁面 */
+    html, body {
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+    
+    /* 2. 所有按鈕基礎設定：使用相對單位與防破版機制 */
+    div[data-testid="stButton"] button {
+        width: 100% !important;
+        white-space: normal !important;      /* 允許文字適當換行 */
+        word-break: break-word !important;   /* 避免長字溢出 */
+        line-height: 1.2 !important;
+        box-sizing: border-box !important;
     }
 
-    /* 2. 預設/次要按鈕（名字圖框 & 補簽圖框）：白底藍框大字 */
+    /* 3. 按鈕文字通用設定：採用 clamp() 實現響應式字體大小 */
+    div[data-testid="stButton"] button p {
+        /* clamp(最小字體, 隨螢幕寬度變化, 最大字體) */
+        font-size: clamp(18px, 5vw, 26px) !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.5px !important;
+        margin: 0 !important;
+        padding: 2px 0 !important;
+    }
+
+    /* 4. 次要按鈕（名字圖框 & 補簽圖框）：動態高度 */
     div[data-testid="stButton"] button[kind="secondary"] {
-        height: 2.8em !important;
-        min-height: 2.8em !important;
-        padding: 4px 8px !important;
+        min-height: 3em !important;
+        height: auto !important;             /* 讓高度隨字體大小自適應 */
+        padding: 8px 6px !important;
         border-radius: 12px !important;
-        border: 3px solid #0284C7 !important;
+        border: 2px solid #0284C7 !important;
         background-color: #FFFFFF !important;
         color: #0F172A !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.08) !important;
-        margin-bottom: 6px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.06) !important;
+        margin-bottom: 8px !important;
     }
     div[data-testid="stButton"] button[kind="secondary"]:hover {
         background-color: #E0F2FE !important;
         border-color: #0369A1 !important;
     }
 
-    /* 3. 禁用（未設定名字）的反白按鈕樣式 */
+    /* 5. 禁用（未設定名字）的反白按鈕樣式 */
     div[data-testid="stButton"] button:disabled {
         background-color: #F1F5F9 !important;
         border: 2px dashed #94A3B8 !important;
@@ -67,41 +82,41 @@ st.markdown("""
         cursor: not-allowed !important;
     }
     div[data-testid="stButton"] button:disabled p {
-        color: #94A3B8 !important;          /* 文字灰色反白 */
+        color: #94A3B8 !important;
+        font-size: clamp(14px, 4vw, 20px) !important; /* 未啟用按鈕字體稍微調小 */
         font-weight: normal !important;
     }
 
-    /* 4. 主要按鈕（本週簽到大綠按鈕） */
+    /* 6. 主要按鈕（本週簽到大綠按鈕） */
     div[data-testid="stButton"] button[kind="primary"] {
-        height: 3.2em !important;
         min-height: 3.2em !important;
-        padding: 4px 8px !important;
+        height: auto !important;
+        padding: 8px 12px !important;
         border-radius: 12px !important;
         border: none !important;
         background-color: #059669 !important;
         box-shadow: 0 4px 6px rgba(0,0,0,0.15) !important;
-        margin-bottom: 6px !important;
+        margin-bottom: 8px !important;
     }
     div[data-testid="stButton"] button[kind="primary"] p {
         color: #FFFFFF !important;
-        font-size: 34px !important;
+        font-size: clamp(20px, 6vw, 30px) !important; /* 保持大字醒目但不爆框 */
     }
     div[data-testid="stButton"] button[kind="primary"]:hover {
         background-color: #047857 !important;
     }
 
-    /* 5. 分頁選單字體 */
+    /* 7. 分頁選單自適應 */
     div[data-testid="stRadio"] label p {
-        font-size: 20px !important;
+        font-size: clamp(16px, 4.5vw, 20px) !important;
         font-weight: bold !important;
     }
-    
-    /* 6. 手機版邊距 */
-    .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
+
+    /* 8. 極小螢幕手機特別微調 */
+    @media (max-width: 360px) {
+        div[data-testid="stButton"] button p {
+            font-size: 18px !important;
+        }
     }
     </style>
 """, unsafe_allow_html=True)
