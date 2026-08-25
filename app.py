@@ -110,21 +110,31 @@ st.markdown("""
 # 2. 資料處理函式
 # ==========================================
 def load_members():
-    # 建立預設 50 人名單：前 34 位使用真實姓名，後 16 位使用「會友 35~50」
+    # 建立正確的 50 人名單基底 (前 34 位為真實名字)
     default_members = list(INITIAL_MEMBERS)
     for i in range(len(INITIAL_MEMBERS), 50):
         default_members.append(f"會友 {i+1:02d}")
         
+    need_reset = False
+    
     if os.path.exists(MEMBERS_FILE):
-        df_m = pd.read_csv(MEMBERS_FILE)
-        # 確保若是舊數據缺失能由底稿補充
-        if df_m.empty or len(df_m) < 34:
-            df_m = pd.DataFrame({"member_name": default_members})
-            df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
-        return df_m
+        try:
+            df_m = pd.read_csv(MEMBERS_FILE)
+            current_names = df_m["member_name"].tolist() if not df_m.empty else []
+            
+            # 如果發現舊檔案裡包含 "會友 01"，表示曾被重置過，強制修復為真實名單
+            if "會友 01" in current_names or len(current_names) < 34:
+                need_reset = True
+        except Exception:
+            need_reset = True
     else:
+        need_reset = True
+
+    if need_reset:
         df_m = pd.DataFrame({"member_name": default_members})
         df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
+        return df_m
+    else:
         return df_m
 
 def save_members(members_list):
