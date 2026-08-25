@@ -17,48 +17,63 @@ PLAN_YEAR = 2
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
-# CSS 視覺絕殺：針對按鈕內的「名字」強制放大 + 撐滿
+# CSS 視覺修正：區分「一般按鈕」與「Primary 滿版主題按鈕」
 # ==========================================
 st.markdown("""
     <style>
-    /* 1. 穿透 Streamlit 的內部結構，強行設定按鈕內「姓名」的字體大小與極粗體 */
-    button[kind="secondary"] p, button[kind="primary"] p, div[data-testid="stButton"] button p {
-        font-size: 34px !important;       /* 直接把「姓名」字級放大到 34px */
+    /* 1. 所有按鈕內部的文字通用大字樣式 */
+    div[data-testid="stButton"] button p {
+        font-size: 32px !important;       /* 特大號字體 */
         font-weight: 900 !important;       /* 極粗體 */
-        letter-spacing: 2px !important;    /* 稍微拉開字距，字體看起來更大大方方 */
+        letter-spacing: 1px !important;
         margin: 0 !important;
         padding: 0 !important;
-        line-height: 1.0 !important;
+        line-height: 1.1 !important;
     }
 
-    /* 2. 讓按鈕圖框高度扁平化 (精巧不佔空間)，並將內補丁 (Padding) 壓到極致 */
-    div[data-testid="stButton"] button {
-        height: 2.8em !important;          /* 限制圖框整體高度，手機一頁能塞多個 */
+    /* 2. 預設/次要按鈕（名字圖框 & 補簽圖框）：白底藍框大字 */
+    div[data-testid="stButton"] button[kind="secondary"] {
+        height: 2.8em !important;
         min-height: 2.8em !important;
-        padding: 4px 8px !important;       /* 幾乎不留上下空白，讓名字撐滿圖框 */
+        padding: 4px 8px !important;
         border-radius: 12px !important;
         border: 3px solid #0284C7 !important;
         background-color: #FFFFFF !important;
+        color: #0F172A !important;
         box-shadow: 0 2px 4px rgba(0,0,0,0.08) !important;
         margin-bottom: 6px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
     }
-
-    /* 3. 懸停與點擊效果 */
-    div[data-testid="stButton"] button:hover {
+    div[data-testid="stButton"] button[kind="secondary"]:hover {
         background-color: #E0F2FE !important;
         border-color: #0369A1 !important;
     }
 
-    /* 4. 第一層分頁 Radio 導覽字體 */
+    /* 3. 主要按鈕（本週簽到大綠/大藍按鈕）：滿版填色，顯眼醒目 */
+    div[data-testid="stButton"] button[kind="primary"] {
+        height: 3.2em !important;
+        min-height: 3.2em !important;
+        padding: 4px 8px !important;
+        border-radius: 12px !important;
+        border: none !important;
+        background-color: #059669 !important; /* 鮮豔翡翠綠背景 */
+        box-shadow: 0 4px 6px rgba(0,0,0,0.15) !important;
+        margin-bottom: 6px !important;
+    }
+    div[data-testid="stButton"] button[kind="primary"] p {
+        color: #FFFFFF !important;            /* 文字強制為純白 */
+        font-size: 34px !important;
+    }
+    div[data-testid="stButton"] button[kind="primary"]:hover {
+        background-color: #047857 !important;
+    }
+
+    /* 4. 分頁選單字體 */
     div[data-testid="stRadio"] label p {
         font-size: 20px !important;
         font-weight: bold !important;
     }
     
-    /* 5. 手機版邊距縮小，提升畫面坪效 */
+    /* 5. 手機版邊距 */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
@@ -157,7 +172,7 @@ with tab_user:
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
 
     # ----------------------------------------------------
-    # 第一層：滿框大字選單 (適合手機一頁呈現 10 人)
+    # 第一層：名字點選圖框選單 (適合手機一頁呈現 10 人)
     # ----------------------------------------------------
     if st.session_state.current_member is None:
         st.markdown(f"**當前進度：`{current_week_display}`**")
@@ -176,15 +191,14 @@ with tab_user:
             
             st.write("👇 **請點選您的名字圖框：**")
             
-            # 使用 2 欄排列，高坪效
+            # 使用 2 欄排列
             cols = st.columns(2)
             for idx, name in enumerate(current_page_members):
                 with cols[idx % 2]:
                     is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
                     status_icon = "✅" if is_signed else "👤"
                     
-                    # 按鈕標題簡化，文字集中在名字本身
-                    if st.button(f"{status_icon} {name}", key=f"select_{name}", use_container_width=True):
+                    if st.button(f"{status_icon} {name}", key=f"select_{name}", type="secondary", use_container_width=True):
                         st.session_state.current_member = name
                         st.rerun()
 
@@ -200,7 +214,7 @@ with tab_user:
             
         st.markdown(f"## 👤 {member_name} 的讀經專頁")
         
-        # 1. 本週簽到區塊
+        # 1. 本週簽到區塊 (醒目大綠鈕)
         st.markdown(f"### 📍 【本週進度】{current_week_display}")
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
         
@@ -214,7 +228,7 @@ with tab_user:
                 
         st.divider()
         
-        # 2. 補簽未完成進度
+        # 2. 補簽未完成進度 (白底大字鈕)
         st.markdown("### 🟡 【補簽未完成進度】")
         signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist()
         
@@ -231,7 +245,7 @@ with tab_user:
             cols_missing = st.columns(2)
             for idx, item in enumerate(missing_weeks_info):
                 with cols_missing[idx % 2]:
-                    if st.button(f"🟡 {item['display']}", key=f"btn_miss_{item['key']}", use_container_width=True):
+                    if st.button(f"🟡 {item['display']}", key=f"btn_miss_{item['key']}", type="secondary", use_container_width=True):
                         save_record(item["key"], member_name)
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
                         st.rerun()
@@ -268,7 +282,7 @@ with tab_admin:
             elif "Q3" in filter_mode:
                 target_weeks = [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(27, 40)]
             elif "Q4" in filter_mode:
-                target_weeks = [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(40, 53)]
+                target_weeks = [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(40, 52)]
             elif "上半年" in filter_mode:
                 target_weeks = [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(1, 27)]
             elif "下半年" in filter_mode:
@@ -343,6 +357,10 @@ with tab_admin:
             if st.button("確認代簽"):
                 save_record(adm_w, adm_m)
                 st.toast(f"✅ 已為 {adm_m} 補簽 {adm_w}")
+                st.rerun()
+                
+    elif pwd != "":
+        st.error("密碼錯誤！")
                 st.rerun()
                 
     elif pwd != "":
