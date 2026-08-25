@@ -9,7 +9,7 @@ import os
 DATA_FILE = "church_attendance.csv"
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
-ADMIN_PASSWORD = "1234"  # 後台密碼
+ADMIN_PASSWORD = "church_admin"  # 後台密碼
 
 # 4年讀經計畫設定：今年為第 2 年
 PLAN_YEAR = 2 
@@ -17,14 +17,14 @@ PLAN_YEAR = 2
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
-# CSS 視覺修正：區分「一般按鈕」與「Primary 滿版主題按鈕」
+# CSS 視覺修正
 # ==========================================
 st.markdown("""
     <style>
     /* 1. 所有按鈕內部的文字通用大字樣式 */
     div[data-testid="stButton"] button p {
-        font-size: 32px !important;       /* 特大號字體 */
-        font-weight: 900 !important;       /* 極粗體 */
+        font-size: 32px !important;
+        font-weight: 900 !important;
         letter-spacing: 1px !important;
         margin: 0 !important;
         padding: 0 !important;
@@ -48,19 +48,19 @@ st.markdown("""
         border-color: #0369A1 !important;
     }
 
-    /* 3. 主要按鈕（本週簽到大綠/大藍按鈕）：滿版填色，顯眼醒目 */
+    /* 3. 主要按鈕（本週簽到大綠按鈕） */
     div[data-testid="stButton"] button[kind="primary"] {
         height: 3.2em !important;
         min-height: 3.2em !important;
         padding: 4px 8px !important;
         border-radius: 12px !important;
         border: none !important;
-        background-color: #059669 !important; /* 鮮豔翡翠綠背景 */
+        background-color: #059669 !important;
         box-shadow: 0 4px 6px rgba(0,0,0,0.15) !important;
         margin-bottom: 6px !important;
     }
     div[data-testid="stButton"] button[kind="primary"] p {
-        color: #FFFFFF !important;            /* 文字強制為純白 */
+        color: #FFFFFF !important;
         font-size: 34px !important;
     }
     div[data-testid="stButton"] button[kind="primary"]:hover {
@@ -172,7 +172,7 @@ with tab_user:
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
 
     # ----------------------------------------------------
-    # 第一層：名字點選圖框選單 (適合手機一頁呈現 10 人)
+    # 第一層：名字點選圖框選單
     # ----------------------------------------------------
     if st.session_state.current_member is None:
         st.markdown(f"**當前進度：`{current_week_display}`**")
@@ -191,7 +191,6 @@ with tab_user:
             
             st.write("👇 **請點選您的名字圖框：**")
             
-            # 使用 2 欄排列
             cols = st.columns(2)
             for idx, name in enumerate(current_page_members):
                 with cols[idx % 2]:
@@ -214,7 +213,7 @@ with tab_user:
             
         st.markdown(f"## 👤 {member_name} 的讀經專頁")
         
-        # 1. 本週簽到區塊 (醒目大綠鈕)
+        # 1. 本週簽到區塊
         st.markdown(f"### 📍 【本週進度】{current_week_display}")
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
         
@@ -228,7 +227,7 @@ with tab_user:
                 
         st.divider()
         
-        # 2. 補簽未完成進度 (白底大字鈕)
+        # 2. 補簽未完成進度
         st.markdown("### 🟡 【補簽未完成進度】")
         signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist()
         
@@ -264,7 +263,7 @@ with tab_admin:
         
         sub1, sub2, sub3 = st.tabs(["📊 多維度統計", "👥 名單管理 (改名/新增/刪除)", "⚡ 手動代簽"])
         
-        # 1. 統計報表
+        # 1. 防爆表格統計報表
         with sub1:
             st.markdown(f"### 🔍 第 {PLAN_YEAR} 年彈性時間區間讀經統計")
             filter_mode = st.selectbox("請選擇查詢時間基準：", [
@@ -282,7 +281,7 @@ with tab_admin:
             elif "Q3" in filter_mode:
                 target_weeks = [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(27, 40)]
             elif "Q4" in filter_mode:
-                target_weeks = [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(40, 52)]
+                target_weeks = [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(40, 53)]
             elif "上半年" in filter_mode:
                 target_weeks = [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(1, 27)]
             elif "下半年" in filter_mode:
@@ -292,7 +291,12 @@ with tab_admin:
                 
             if not df_attendance.empty:
                 filtered_df = df_attendance[df_attendance["week_key"].isin(target_weeks)]
-                pivot_df = filtered_df.pivot(index="member_name", columns="week_key", values="timestamp")
+                
+                # 防重複核心修正：自動剔除重複簽到紀錄，保留最新的一筆
+                clean_df = filtered_df.drop_duplicates(subset=["member_name", "week_key"], keep="last")
+                
+                # 使用 pivot_table 取代 pivot
+                pivot_df = clean_df.pivot_table(index="member_name", columns="week_key", values="timestamp", aggfunc="first")
                 pivot_df = pivot_df.reindex(index=member_list, columns=target_weeks)
                 
                 count_series = pivot_df.notna().sum(axis=1)
