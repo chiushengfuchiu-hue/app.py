@@ -14,6 +14,17 @@ ADMIN_PASSWORD = "1234"  # 後台密碼
 # 4年讀經計畫設定：今年為第 2 年
 PLAN_YEAR = 2 
 
+# 圖片辨識出的 34 位真實名單底稿
+INITIAL_MEMBERS = [
+    "周寶燕", "曾笑", "黃然玉", "吳妃玉", "楊游美麗", 
+    "翁淑美", "石美莎", "單麗蘭", "鄭富美", "李鶯芳", 
+    "趙文崇", "李應昌", "賴健文", "林春妙", "邱文雀", 
+    "梁垠盤", "陳宜宏", "郭彩梅", "林春桃", "鳳姐", 
+    "黃敏生", "吳秀卉", "陳安俐", "程乃珍", "蕭慧麗", 
+    "蔡慧俐", "林雅谷", "李俊修", "林淑惠", "盧正亮", 
+    "林雅音", "劉淑珠", "葉雅雲", "趙文川"
+]
+
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
@@ -99,10 +110,19 @@ st.markdown("""
 # 2. 資料處理函式
 # ==========================================
 def load_members():
+    # 建立預設 50 人名單：前 34 位使用真實姓名，後 16 位使用「會友 35~50」
+    default_members = list(INITIAL_MEMBERS)
+    for i in range(len(INITIAL_MEMBERS), 50):
+        default_members.append(f"會友 {i+1:02d}")
+        
     if os.path.exists(MEMBERS_FILE):
-        return pd.read_csv(MEMBERS_FILE)
+        df_m = pd.read_csv(MEMBERS_FILE)
+        # 確保若是舊數據缺失能由底稿補充
+        if df_m.empty or len(df_m) < 34:
+            df_m = pd.DataFrame({"member_name": default_members})
+            df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
+        return df_m
     else:
-        default_members = [f"會友 {i+1:02d}" for i in range(50)]
         df_m = pd.DataFrame({"member_name": default_members})
         df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
         return df_m
@@ -213,7 +233,6 @@ with tab_user:
             # 左欄渲染
             with col1:
                 for name in left_col_members:
-                    # 判斷是否為預設名稱 (包含 "會友 ")
                     is_placeholder = name.startswith("會友 ")
                     is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
                     
