@@ -9,7 +9,7 @@ import os
 DATA_FILE = "church_attendance.csv"
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
-ADMIN_PASSWORD = "church_admin"  # 後台密碼
+ADMIN_PASSWORD = "1234"  # 後台密碼
 
 # 4年讀經計畫設定：今年為第 2 年
 PLAN_YEAR = 2 
