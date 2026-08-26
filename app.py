@@ -13,12 +13,13 @@ VERSES_FILE = "verses.csv"
 SCHEDULE_RECORD_FILE = "schedule_records.csv"
 ATTENDANCE_FILE = "attendance_records.csv"  # 本地簽到資料庫
 SCHEDULE_DIR = "schedules_img"
-ADMIN_PASSWORD = "1234"
+ADMIN_PASSWORD = "610113"
 
 PLAN_YEAR = 2 
 
 os.makedirs(SCHEDULE_DIR, exist_ok=True)
 
+# 已更新最新 36 位會友名單（含 翁春祝、邱聖富）
 INITIAL_MEMBERS = [
     "周寶燕", "曾笑", "黃然玉", "吳妃玉", "楊游美麗", 
     "翁淑美", "石美莎", "單麗蘭", "鄭富美", "李鶯芳", 
@@ -27,7 +28,7 @@ INITIAL_MEMBERS = [
     "黃敏生", "吳秀卉", "陳安俐", "程乃珍", "蕭慧麗", 
     "蔡慧俐", "林雅谷", "李俊修", "林淑惠", "盧正亮", 
     "翁春祝", "劉淑珠", "葉雅雲", "林雅音", "趙文川",
-    "邱聖富",
+    "邱聖富"
 ]
 
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
@@ -91,25 +92,24 @@ def add_single_record(week_key, member_name):
     return True
 
 def load_members():
-    default_members = list(INITIAL_MEMBERS)
-    for i in range(len(INITIAL_MEMBERS), 50):
-        default_members.append(f"會友 {i+1:02d}")
-        
+    """優先載入 church_members.csv，若無檔案才建立預設值"""
     if os.path.exists(MEMBERS_FILE):
         try:
             df_m = pd.read_csv(MEMBERS_FILE)
             col_name = "member_name" if "member_name" in df_m.columns else df_m.columns[0]
             current_names = df_m[col_name].dropna().astype(str).str.strip().tolist()
-            if len(current_names) >= 34 and "會友 01" not in current_names:
+            if current_names:
                 return pd.DataFrame({"member_name": current_names})
         except Exception:
             pass
 
-    df_m = pd.DataFrame({"member_name": default_members})
+    # 若尚未產生檔案，則自動以 INITIAL_MEMBERS 初始化
+    df_m = pd.DataFrame({"member_name": INITIAL_MEMBERS})
     df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
     return df_m
 
 def save_members(members_list):
+    """將後台修改後的名單強制覆蓋寫入 CSV"""
     pd.DataFrame({"member_name": members_list}).to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
 
 def get_weekly_verse(week_num):
@@ -320,7 +320,7 @@ with tab_user:
             st.success("🎉 太棒了！過去每一週的進度皆已完成！")
 
 # ------------------------------------------
-# TAB 2: 完整後台管理功能 (已恢復)
+# TAB 2: 後台管理功能
 # ------------------------------------------
 with tab_admin:
     st.subheader("🔒 管理者控制台")
@@ -378,7 +378,7 @@ with tab_admin:
             st.write("可在下方文字框中新增或修改會友姓名（每行一位）：")
             
             current_m_text = "\n".join(member_list)
-            new_m_text = st.text_area("會友名單列表：", value=current_m_text, height=300)
+            new_m_text = st.text_area("會友名單列表：", value=current_m_text, height=350)
             
             if st.button("💾 儲存名單變更"):
                 updated_names = [name.strip() for name in new_m_text.split("\n") if name.strip()]
