@@ -1,12 +1,12 @@
-import streamlit as st
-import pandas as pd
 import datetime
 import os
+import pandas as pd
+import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
 # =========================================================
-# Google Sheets 串接設定
+# 1. Google Sheets 串接設定與讀寫函式
 # =========================================================
 @st.cache_resource
 def get_gsheet_client():
@@ -225,7 +225,7 @@ def save_record(week_key, member_name):
             "timestamp": timestamp_str
         }])
         df = pd.concat([df, new_data], ignore_index=True)
-        df.to_csv(DATA_FILE, index=False, encoding="utf-8-sig")
+        save_attendance(selected_member, current_week, today_str")
         return True
     return False
 
