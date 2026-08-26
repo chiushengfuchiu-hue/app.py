@@ -10,11 +10,10 @@ from google.oauth2.service_account import Credentials
 # ==========================================
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
-SCHEDULE_RECORD_FILE = "schedule_records.csv"  # 記錄週別與對應圖片檔名的對照表
-SCHEDULE_DIR = "schedules_img"                  # 儲存進度圖的資料夾
-ADMIN_PASSWORD = "church_admin"                 # 後台密碼
+SCHEDULE_RECORD_FILE = "schedule_records.csv"
+SCHEDULE_DIR = "schedules_img"
+ADMIN_PASSWORD = "church_admin"
 
-# 4年讀經計畫設定：今年為第 2 年
 PLAN_YEAR = 2 
 
 os.makedirs(SCHEDULE_DIR, exist_ok=True)
@@ -53,10 +52,8 @@ def get_gsheet_client():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 
-# 加上 ttl 快取 5 秒，提昇連線與載入速度
-@st.cache_data(ttl=5)
-def load_attendance():
-    """從 Google Sheets 讀取簽到紀錄（快取加速）"""
+def fetch_attendance_from_cloud():
+    """直接從雲端抓取最新的簽到資料"""
     try:
         client = get_gsheet_client()
         sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
@@ -64,7 +61,6 @@ def load_attendance():
         records = sheet.get_all_records()
         df = pd.DataFrame(records)
         
-        # 確保欄位存在並去除字串前後空格，防止比對失敗
         for col in ["week_key", "member_name", "timestamp"]:
             if col not in df.columns:
                 df[col] = ""
@@ -75,7 +71,7 @@ def load_attendance():
         return pd.DataFrame(columns=["week_key", "member_name", "timestamp"])
 
 def save_record(week_key, member_name):
-    """寫入簽到紀錄至 Google Sheets 並清空快取"""
+    """寫入簽到紀錄至 Google Sheets 並同步更新 Session State"""
     try:
         client = get_gsheet_client()
         sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
@@ -88,8 +84,11 @@ def save_record(week_key, member_name):
         # 寫入雲端
         sheet.append_row([week_key, member_name, timestamp_str])
         
-        # 清除快取，讓前台下一秒立刻讀到最新資料
-        st.cache_data.clear()
+        # 關鍵修正：同步更新本地 Session State 中的紀錄，讓畫面無縫更新！
+        if "attendance_data" in st.session_state and isinstance(st.session_state.attendance_data, pd.DataFrame):
+            new_row = pd.DataFrame([{"week_key": week_key, "member_name": member_name, "timestamp": timestamp_str}])
+            st.session_state.attendance_data = pd.concat([st.session_state.attendance_data, new_row], ignore_index=True)
+            
         return True
     except Exception as e:
         st.error(f"雲端寫入失敗: {e}")
@@ -280,9 +279,12 @@ def save_schedule_record(week_key, uploaded_file):
 if "current_member" not in st.session_state:
     st.session_state.current_member = None
 
+# 使用 Session State 暫存簽到資料，避免重複向雲端請求並實現即時更新
+if "attendance_data" not in st.session_state or st.button("🔄 重新整理簽到狀態"):
+    st.session_state.attendance_data = fetch_attendance_from_cloud()
+
 now = datetime.datetime.now()
 
-# 週日為一週第一天
 is_sunday = (now.weekday() == 6)
 calc_date = now + datetime.timedelta(days=1) if is_sunday else now
 current_week_num = calc_date.isocalendar()[1]
@@ -292,7 +294,7 @@ current_week_display = f"第 {PLAN_YEAR} 年 - 第 {current_week_num:02d} 週"
 
 df_members = load_members()
 member_list = df_members["member_name"].tolist()
-df_attendance = load_attendance()
+df_attendance = st.session_state.attendance_data
 
 st.title(f"📖 教會讀經簽到（{current_week_display}）")
 
@@ -410,7 +412,6 @@ with tab_user:
         
         st.markdown(f"### 📍 【本週進度】{current_week_display}")
         
-        # 精確比對簽到紀錄
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
         
         if is_signed:
@@ -424,6 +425,8 @@ with tab_user:
         st.divider()
         
         st.markdown("### 🟡 【補簽未完成進度】")
+        
+        # 抓取該會友所有已簽到的 week_key
         signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist() if not df_attendance.empty else []
         
         missing_weeks_info = []
@@ -444,15 +447,15 @@ with tab_user:
             with mc1:
                 for item in left_missing:
                     if st.button(f"🟡 {item['display']}", key=f"btn_miss_{item['key']}", type="secondary", use_container_width=True):
-                        save_record(item["key"], member_name)
-                        st.toast(f"✅ 已成功補簽 `{item['display']}`！")
-                        st.rerun()
+                        if save_record(item["key"], member_name):
+                            st.toast(f"✅ 已成功補簽 `{item['display']}`！")
+                            st.rerun()
             with mc2:
                 for item in right_missing:
                     if st.button(f"🟡 {item['display']}", key=f"btn_miss_{item['key']}", type="secondary", use_container_width=True):
-                        save_record(item["key"], member_name)
-                        st.toast(f"✅ 已成功補簽 `{item['display']}`！")
-                        st.rerun()
+                        if save_record(item["key"], member_name):
+                            st.toast(f"✅ 已成功補簽 `{item['display']}`！")
+                            st.rerun()
         else:
             st.success("🎉 太棒了！過去每一週的進度皆已完成！")
 
@@ -576,9 +579,9 @@ with tab_admin:
             adm_m = c1.selectbox("會友：", member_list)
             adm_w = c2.text_input("週別 (例: Y2-W35)：", value=current_week_key)
             if st.button("確認代簽"):
-                save_record(adm_w, adm_m)
-                st.toast(f"✅ 已為 {adm_m} 補簽 {adm_w}")
-                st.rerun()
+                if save_record(adm_w, adm_m):
+                    st.toast(f"✅ 已為 {adm_m} 補簽 {adm_w}")
+                    st.rerun()
                 
     elif pwd != "":
         st.error("密碼錯誤！")
