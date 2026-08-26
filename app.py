@@ -36,6 +36,16 @@ st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="�
 # 2. 資料庫與邏輯處理
 # ==========================================
 def load_attendance():
+    def delete_single_record(week_key, member_name):
+    """刪除特定會友某週的簽到紀錄"""
+    df = load_attendance()
+    week_key = str(week_key).strip()
+    member_name = str(member_name).strip()
+    
+    # 過濾掉該筆紀錄
+    df_new = df[~((df["week_key"] == week_key) & (df["member_name"] == member_name))]
+    save_attendance(df_new)
+    return True
     if os.path.exists(ATTENDANCE_FILE):
         try:
             df = pd.read_csv(ATTENDANCE_FILE, dtype=str)
@@ -320,6 +330,21 @@ with tab_user:
                 st.rerun()
                 
         st.divider()
+        st.markdown("#### 🛠️ 誤簽撤銷 / 刪除紀錄")
+        col_del1, col_del2, col_del3 = st.columns([2, 2, 1])
+        
+        with col_del1:
+            del_member = st.selectbox("選擇要修正的會友：", member_list)
+        with col_del2:
+            del_week_num = st.number_input("選擇要撤銷的週數 (1~52)：", min_value=1, max_value=52, value=25)
+            del_week_key = f"Y{PLAN_YEAR}-W{del_week_num:02d}"
+        with col_del3:
+            st.write("") # 留空對齊
+            st.write("")
+            if st.button("❌ 撤銷此簽到", type="secondary"):
+                delete_single_record(del_week_key, del_member)
+                st.success(f"已成功刪除 {del_member} 在【{del_week_key}】的簽到紀錄！")
+                st.rerun()
         st.markdown("### 🟡 【補簽未完成進度】")
         
         signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist()
@@ -371,33 +396,34 @@ with tab_admin:
         with admin_sub_tab1:
             st.markdown("### 📊 全會友讀經簽到進度總表")
             
-            # 選擇統計區間
+           # 選擇統計區間選單
             time_range = st.selectbox(
                 "📅 請選擇匯出與統計時間區間：",
-                ["最近 4 週", "本季度 (13 週)", "半年 (26 週)", "全年度 (52 週)"]
+                ["最近 4 週", "第一季 (W01~W13)", "第二季 (W14~W26)", "第三季 (W27~W39)", "第四季 (W40~W52)", "半年 (26 週)", "全年度 (52 週)"]
             )
             
-            # 計算對應要顯示的最大週數
-            if time_range == "最近 4 週":
-                range_weeks = max(1, current_week_num - 3)
-                df_pivot = generate_pivot_report(PLAN_YEAR, current_week_num)
-                # 切片保留最近 4 週
-                target_cols = ["member_name", "完成週數", "完成率"] + [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(range_weeks, current_week_num + 1)]
-                df_pivot = df_pivot[target_cols]
-            elif time_range == "本季度 (13 週)":
-                range_weeks = max(1, current_week_num - 12)
-                df_pivot = generate_pivot_report(PLAN_YEAR, current_week_num)
-                target_cols = ["member_name", "完成週數", "完成率"] + [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(range_weeks, current_week_num + 1)]
-                df_pivot = df_pivot[target_cols]
+            # 根據選項定義 start_w 與 end_w
+            if time_range == "第一季 (W01~W13)":
+                start_w, end_w = 1, 13
+            elif time_range == "第二季 (W14~W26)":
+                start_w, end_w = 14, 26
+            elif time_range == "第三季 (W27~W39)":
+                start_w, end_w = 27, 39
+            elif time_range == "第四季 (W40~W52)":
+                start_w, end_w = 40, 52
+            elif time_range == "最近 4 週":
+                start_w, end_w = max(1, current_week_num - 3), current_week_num
             elif time_range == "半年 (26 週)":
-                range_weeks = max(1, current_week_num - 25)
-                df_pivot = generate_pivot_report(PLAN_YEAR, current_week_num)
-                target_cols = ["member_name", "完成週數", "完成率"] + [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(range_weeks, current_week_num + 1)]
-                df_pivot = df_pivot[target_cols]
+                start_w, end_w = max(1, current_week_num - 25), current_week_num
             else: # 全年度
-                df_pivot = generate_pivot_report(PLAN_YEAR, 52)
-
-            st.dataframe(df_pivot, use_container_width=True, height=500)
+                start_w, end_w = 1, 52
+            
+            # 抓取對應區間的矩陣資料
+            df_pivot = generate_pivot_report(PLAN_YEAR, 52)
+            target_cols = ["member_name", "完成週數", "完成率"] + [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(start_w, end_w + 1)]
+            df_pivot_filtered = df_pivot[target_cols]
+            
+            st.dataframe(df_pivot_filtered, use_container_width=True, height=500)
             
             # 匯出按鈕
             csv_data = df_pivot.to_csv(index=False, encoding="utf-8-sig")
