@@ -13,13 +13,13 @@ VERSES_FILE = "verses.csv"
 SCHEDULE_RECORD_FILE = "schedule_records.csv"
 ATTENDANCE_FILE = "attendance_records.csv"  # 本地簽到資料庫
 SCHEDULE_DIR = "schedules_img"
-ADMIN_PASSWORD = "610113"
+ADMIN_PASSWORD = "church_admin"
 
 PLAN_YEAR = 2 
 
 os.makedirs(SCHEDULE_DIR, exist_ok=True)
 
-# 已更新最新 36 位會友名單（含 翁春祝、邱聖富）
+# 36 位會友完整名單
 INITIAL_MEMBERS = [
     "周寶燕", "曾笑", "黃然玉", "吳妃玉", "楊游美麗", 
     "翁淑美", "石美莎", "單麗蘭", "鄭富美", "李鶯芳", 
@@ -92,24 +92,12 @@ def add_single_record(week_key, member_name):
     return True
 
 def load_members():
-    """優先載入 church_members.csv，若無檔案才建立預設值"""
-    if os.path.exists(MEMBERS_FILE):
-        try:
-            df_m = pd.read_csv(MEMBERS_FILE)
-            col_name = "member_name" if "member_name" in df_m.columns else df_m.columns[0]
-            current_names = df_m[col_name].dropna().astype(str).str.strip().tolist()
-            if current_names:
-                return pd.DataFrame({"member_name": current_names})
-        except Exception:
-            pass
-
-    # 若尚未產生檔案，則自動以 INITIAL_MEMBERS 初始化
+    """強制更新並讀取最新會友名單"""
     df_m = pd.DataFrame({"member_name": INITIAL_MEMBERS})
     df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
     return df_m
 
 def save_members(members_list):
-    """將後台修改後的名單強制覆蓋寫入 CSV"""
     pd.DataFrame({"member_name": members_list}).to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
 
 def get_weekly_verse(week_num):
@@ -213,29 +201,40 @@ with tab_user:
     verse_info = get_weekly_verse(current_week_num)
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
 
-    # 顯示最新進度表
-    latest_week_num = current_week_num
+    # --------------------------------------
+    # 🗓️ 歷史與最新進度表查詢區塊 (新增選單功能)
+    # --------------------------------------
+    st.markdown("#### 🗓️ 讀經進度表查詢")
+    
+    # 計算最新有上傳圖片的週數
+    latest_uploaded_week = current_week_num
     if os.path.exists(SCHEDULE_RECORD_FILE):
         try:
             df_s_check = pd.read_csv(SCHEDULE_RECORD_FILE)
             if not df_s_check.empty:
                 uploaded_weeks = df_s_check["week_key"].str.extract(r'W(\d+)')[0].dropna().astype(int).tolist()
-                if uploaded_weeks: latest_week_num = max(uploaded_weeks)
+                if uploaded_weeks: 
+                    latest_uploaded_week = max(max(uploaded_weeks), current_week_num)
         except Exception: pass
 
-    latest_week_key = f"Y{PLAN_YEAR}-W{latest_week_num:02d}"
-    latest_week_label = f"第 {PLAN_YEAR} 年 - 第 {latest_week_num:02d} 週"
-
-    st.markdown(f"#### 🗓️ 最新進度表（{latest_week_label}）")
-    latest_img_path = get_schedule_image_path(latest_week_key)
-    if latest_img_path:
-        st.image(latest_img_path, caption=f"【{latest_week_label}】進度對照表", use_container_width=True)
+    # 建立可供選擇的選項選單
+    week_options = [f"第 {PLAN_YEAR} 年 - 第 {w:02d} 週" for w in range(latest_uploaded_week, 0, -1)]
+    
+    selected_week_label = st.selectbox("👇 請選擇欲查看的週數進度表：", week_options, index=0)
+    
+    # 解析選中的週號與 week_key
+    selected_week_num = int(selected_week_label.split("第 ")[2].replace(" 週", ""))
+    selected_week_key = f"Y{PLAN_YEAR}-W{selected_week_num:02d}"
+    
+    selected_img_path = get_schedule_image_path(selected_week_key)
+    if selected_img_path:
+        st.image(selected_img_path, caption=f"【{selected_week_label}】進度對照表", use_container_width=True)
     else:
-        st.warning(f"📌 目前尚未上傳【{latest_week_label}】的進度表圖片。")
+        st.warning(f"📌 目前尚未上傳【{selected_week_label}】的進度表圖片。")
 
     st.divider()
 
-    # 會友名字列表
+    # 會友名字列表 (分頁)
     if st.session_state.current_member is None:
         chunk_size = 10
         total_members = len(member_list)
@@ -267,7 +266,7 @@ with tab_user:
                     st.session_state.current_member = name
                     st.rerun()
 
-    # 個人簽到/補簽頁
+    # 個人簽到/補簽頁面
     else:
         member_name = st.session_state.current_member
         if st.button("⬅️ 返回名字列表", type="secondary", use_container_width=True):
@@ -280,7 +279,7 @@ with tab_user:
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
         
         if is_signed:
-            st.success(f"🎉 **{member_name}**，您已完成本週讀經進度！願神祝福平安喜樂！")
+            st.success(f"🎉 **{member_name}**，您本週已經完成簽到！")
         else:
             if st.button(f"🟢 完成【{current_week_display}】簽到", type="primary", use_container_width=True):
                 add_single_record(current_week_key, member_name)
