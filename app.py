@@ -13,7 +13,7 @@ VERSES_FILE = "verses.csv"
 SCHEDULE_RECORD_FILE = "schedule_records.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
 SCHEDULE_DIR = "schedules_img"
-ADMIN_PASSWORD = "11190928"
+ADMIN_PASSWORD = "church_admin"
 
 PLAN_YEAR = 2 
 
@@ -36,16 +36,6 @@ st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="�
 # 2. 資料庫與邏輯處理
 # ==========================================
 def load_attendance():
-def delete_single_record(week_key, member_name):
-    """刪除特定會友某週的簽到紀錄"""
-    df = load_attendance()
-    week_key = str(week_key).strip()
-    member_name = str(member_name).strip()
-    
-    # 過濾掉該筆紀錄
-    df_new = df[~((df["week_key"] == week_key) & (df["member_name"] == member_name))]
-    save_attendance(df_new)
-    return True
     if os.path.exists(ATTENDANCE_FILE):
         try:
             df = pd.read_csv(ATTENDANCE_FILE, dtype=str)
@@ -61,6 +51,16 @@ def delete_single_record(week_key, member_name):
 
 def save_attendance(df):
     df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8-sig")
+
+def delete_single_record(week_key, member_name):
+    """【新增】撤銷/刪除特定會友某週的簽到紀錄"""
+    df = load_attendance()
+    week_key = str(week_key).strip()
+    member_name = str(member_name).strip()
+    
+    df_new = df[~((df["week_key"] == week_key) & (df["member_name"] == member_name))]
+    save_attendance(df_new)
+    return True
 
 def sync_to_gsheet_async(new_rows_list):
     try:
@@ -97,18 +97,16 @@ def add_single_record(week_key, member_name):
     return True
 
 def load_members():
-    """優先讀取檔案資料，讓後台的新增與修改可以永久保存"""
+    """修正：優先讀取檔案，防止後台新增/修改的會友資料被還原"""
     if os.path.exists(MEMBERS_FILE):
         try:
             df_m = pd.read_csv(MEMBERS_FILE, encoding="utf-8-sig")
             if "member_name" in df_m.columns and not df_m.empty:
-                # 確保名字沒有空白
                 df_m["member_name"] = df_m["member_name"].astype(str).str.strip()
                 return df_m
         except Exception:
             pass
             
-    # 若檔案不存在或讀取失敗，才寫入預設名單
     df_m = pd.DataFrame({"member_name": INITIAL_MEMBERS})
     df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
     return df_m
@@ -150,21 +148,15 @@ def save_schedule_record(week_key, uploaded_file):
     df_s.to_csv(SCHEDULE_RECORD_FILE, index=False, encoding="utf-8-sig")
 
 def generate_pivot_report(target_year, max_week):
-    """產生如截圖範本格式的矩陣總表"""
     df_att = load_attendance()
     members = load_members()["member_name"].tolist()
     
-    # 建立基礎 DataFrame
     report_data = []
-    
-    # 找出該年份該範圍內所有週號
     week_cols = [f"Y{target_year}-W{w:02d}" for w in range(1, max_week + 1)]
     
     for m in members:
         row = {"member_name": m}
         completed_count = 0
-        
-        # 抓取個人已簽到的週號集合
         m_signed = set(df_att[df_att["member_name"] == m]["week_key"].tolist())
         
         for w_col in week_cols:
@@ -176,12 +168,9 @@ def generate_pivot_report(target_year, max_week):
         
         row["完成週數"] = f"{completed_count} / {max_week}"
         row["完成率"] = f"{(completed_count / max_week * 100):.2f}%" if max_week > 0 else "0.00%"
-        
         report_data.append(row)
         
     df_report = pd.DataFrame(report_data)
-    
-    # 調整欄位順序 (member_name -> 完成週數 -> 完成率 -> 週數欄位)
     cols_order = ["member_name", "完成週數", "完成率"] + week_cols
     return df_report[cols_order]
 
@@ -253,7 +242,6 @@ with tab_user:
     verse_info = get_weekly_verse(current_week_num)
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
 
-    # --- 🗓️ 讀經進度表查詢 (支援跨年份查閱) ---
     st.markdown("#### 🗓️ 讀經進度表查詢")
     
     col_y, col_w = st.columns([1, 2])
@@ -277,7 +265,6 @@ with tab_user:
 
     st.divider()
 
-    # 會友名字列表 (分頁)
     if st.session_state.current_member is None:
         chunk_size = 10
         total_members = len(member_list)
@@ -309,7 +296,6 @@ with tab_user:
                     st.session_state.current_member = name
                     st.rerun()
 
-    # 個人簽到/補簽頁面
     else:
         member_name = st.session_state.current_member
         if st.button("⬅️ 返回名字列表", type="secondary", use_container_width=True):
@@ -330,21 +316,6 @@ with tab_user:
                 st.rerun()
                 
         st.divider()
-        st.markdown("#### 🛠️ 誤簽撤銷 / 刪除紀錄")
-        col_del1, col_del2, col_del3 = st.columns([2, 2, 1])
-        
-        with col_del1:
-            del_member = st.selectbox("選擇要修正的會友：", member_list)
-        with col_del2:
-            del_week_num = st.number_input("選擇要撤銷的週數 (1~52)：", min_value=1, max_value=52, value=25)
-            del_week_key = f"Y{PLAN_YEAR}-W{del_week_num:02d}"
-        with col_del3:
-            st.write("") # 留空對齊
-            st.write("")
-            if st.button("❌ 撤銷此簽到", type="secondary"):
-                delete_single_record(del_week_key, del_member)
-                st.success(f"已成功刪除 {del_member} 在【{del_week_key}】的簽到紀錄！")
-                st.rerun()
         st.markdown("### 🟡 【補簽未完成進度】")
         
         signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist()
@@ -392,17 +363,15 @@ with tab_admin:
             "👥 會友名單編輯"
         ])
         
-        # --- 子功能 1: 簽到總覽與四大區間匯出 ---
+        # --- 子功能 1: 簽到總覽、四大季度匯出與誤簽撤銷 ---
         with admin_sub_tab1:
             st.markdown("### 📊 全會友讀經簽到進度總表")
             
-           # 選擇統計區間選單
             time_range = st.selectbox(
                 "📅 請選擇匯出與統計時間區間：",
                 ["最近 4 週", "第一季 (W01~W13)", "第二季 (W14~W26)", "第三季 (W27~W39)", "第四季 (W40~W52)", "半年 (26 週)", "全年度 (52 週)"]
             )
             
-            # 根據選項定義 start_w 與 end_w
             if time_range == "第一季 (W01~W13)":
                 start_w, end_w = 1, 13
             elif time_range == "第二季 (W14~W26)":
@@ -415,18 +384,16 @@ with tab_admin:
                 start_w, end_w = max(1, current_week_num - 3), current_week_num
             elif time_range == "半年 (26 週)":
                 start_w, end_w = max(1, current_week_num - 25), current_week_num
-            else: # 全年度
+            else:
                 start_w, end_w = 1, 52
-            
-            # 抓取對應區間的矩陣資料
+
             df_pivot = generate_pivot_report(PLAN_YEAR, 52)
             target_cols = ["member_name", "完成週數", "完成率"] + [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(start_w, end_w + 1)]
             df_pivot_filtered = df_pivot[target_cols]
+
+            st.dataframe(df_pivot_filtered, use_container_width=True, height=400)
             
-            st.dataframe(df_pivot_filtered, use_container_width=True, height=500)
-            
-            # 匯出按鈕
-            csv_data = df_pivot.to_csv(index=False, encoding="utf-8-sig")
+            csv_data = df_pivot_filtered.to_csv(index=False, encoding="utf-8-sig")
             st.download_button(
                 label=f"📥 下載【{time_range}】簽到統計 Excel 報表 (CSV)",
                 data=csv_data,
@@ -434,6 +401,24 @@ with tab_admin:
                 mime="text/csv",
                 type="primary"
             )
+
+            # --- 🛠️ 誤簽撤銷區塊 ---
+            st.divider()
+            st.markdown("#### 🛠️ 誤簽撤銷 / 刪除紀錄區")
+            col_del1, col_del2, col_del3 = st.columns([2, 2, 1])
+
+            with col_del1:
+                del_member = st.selectbox("選擇要修正的會友：", member_list)
+            with col_del2:
+                del_week_num = st.number_input("選擇要撤銷的週數 (1~52)：", min_value=1, max_value=52, value=current_week_num)
+                del_week_key = f"Y{PLAN_YEAR}-W{del_week_num:02d}"
+            with col_del3:
+                st.write("")
+                st.write("")
+                if st.button("❌ 撤銷此簽到", type="secondary"):
+                    delete_single_record(del_week_key, del_member)
+                    st.toast(f"已成功刪除 {del_member} 在【{del_week_key}】的紀錄！")
+                    st.rerun()
 
         # --- 子功能 2: 跨年份上傳進度表圖片 ---
         with admin_sub_tab2:
