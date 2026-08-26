@@ -14,12 +14,19 @@ def get_gsheet_client():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    # 複製 Secrets 設定
+    # 讀取 Secrets 設定
     creds_dict = dict(st.secrets["gcp_service_account"])
     
-    # 自動修正私鑰裡面的換行符號與格式
+    # 強效修復私鑰格式問題（處理字面上的 \n 與實際換行）
     if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        pk = creds_dict["private_key"]
+        pk = pk.replace("\\n", "\n")  # 處理轉義字元
+        # 確保 key 有正確的頭尾標籤
+        if not pk.startswith("-----BEGIN PRIVATE KEY-----"):
+            pk = "-----BEGIN PRIVATE KEY-----\n" + pk
+        if not pk.endswith("-----END PRIVATE KEY-----"):
+            pk = pk + "\n-----END PRIVATE KEY-----"
+        creds_dict["private_key"] = pk.strip()
         
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
