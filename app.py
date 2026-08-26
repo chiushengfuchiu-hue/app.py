@@ -280,7 +280,7 @@ with tab_user:
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
         
         if is_signed:
-            st.success(f"🎉 **{member_name}**，您本週已經完成簽到！")
+            st.success(f"🎉 **{member_name}**，您本週已經完成簽到！願神祝福平安喜樂！")
         else:
             if st.button(f"🟢 完成【{current_week_display}】簽到", type="primary", use_container_width=True):
                 add_single_record(current_week_key, member_name)
