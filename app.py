@@ -12,7 +12,7 @@ MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
 SCHEDULE_RECORD_FILE = "schedule_records.csv"
 SCHEDULE_DIR = "schedules_img"
-ADMIN_PASSWORD = "church_admin"
+ADMIN_PASSWORD = "1234"
 
 PLAN_YEAR = 2 
 
