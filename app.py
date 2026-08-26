@@ -11,7 +11,7 @@ MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
 SCHEDULE_RECORD_FILE = "schedule_records.csv"  # 記錄週別與對應圖片檔名的對照表
 SCHEDULE_DIR = "schedules_img"                 # 儲存進度圖的資料夾
-ADMIN_PASSWORD = "church_admin"                # 後台密碼
+ADMIN_PASSWORD = "biblechechin"                # 後台密碼
 
 # 4年讀經計畫設定：今年為第 2 年
 PLAN_YEAR = 2 
@@ -193,14 +193,24 @@ def save_record(week_key, member_name):
     return False
 
 def get_weekly_verse(week_num):
-    fallback = {"verse": "「你的話是我腳前的燈，是我路上的光。」", "ref": "詩篇 119:105"}
+    fallback = {
+        "verse": "「你的話是我腳前的燈，是我路上的光。」", 
+        "ref": "詩篇 119:105",
+        "encouragement": "願神的話語成為你這週隨時的幫助與力量！"
+    }
     if os.path.exists(VERSES_FILE):
         try:
             v_df = pd.read_csv(VERSES_FILE)
-            if not v_df.empty:
-                idx = (week_num - 1) % len(v_df)
-                row = v_df.iloc[idx]
-                return {"verse": str(row["verse"]), "ref": str(row["ref"])}
+            if not v_df.empty and "week" in v_df.columns:
+                # 依據 week 欄位精準比對當前週數
+                match = v_df[v_df["week"] == week_num]
+                if not match.empty:
+                    row = match.iloc[0]
+                    return {
+                        "verse": str(row["verse"]),
+                        "ref": str(row["ref"]),
+                        "encouragement": str(row.get("encouragement", ""))
+                    }
         except Exception:
             pass
     return fallback
@@ -258,42 +268,51 @@ st.title(f"📖 教會讀經簽到（{current_week_display}）")
 tab_user, tab_admin = st.tabs(["✍️ 會友簽到專區", "🔒 後台統計與管理"])
 
 # ------------------------------------------
-# TAB 1: 前台 - 手機滿框大字簽到與進度圖查詢
+# TAB 1: 前台 - 手機滿框大字簽到與進度圖展示
 # ------------------------------------------
 with tab_user:
+    # 1. 本週經文與勉勵
     verse_info = get_weekly_verse(current_week_num)
-    st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
+    st.info(f"""
+    📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**  
+    💡 **本週勉勵**：{verse_info['encouragement']}
+    """)
 
-    # ----------------------------------------------------
-    # 進度圖表展開與歷史查詢專區 (自動顯示最新上傳圖檔)
-    # ----------------------------------------------------
-    with st.expander("🖼️ 點此查看【本週/歷史進度對照表】", expanded=False):
-        # 取得已上傳的最大週數，若無則預設為當週
-        latest_week_num = current_week_num
-        if os.path.exists(SCHEDULE_RECORD_FILE):
-            try:
-                df_s_check = pd.read_csv(SCHEDULE_RECORD_FILE)
-                if not df_s_check.empty:
-                    uploaded_weeks = df_s_check["week_key"].str.extract(r'W(\d+)')[0].dropna().astype(int).tolist()
-                    if uploaded_weeks:
-                        latest_week_num = max(uploaded_weeks)
-            except Exception:
-                pass
+    # 計算已上傳的最新週數
+    latest_week_num = current_week_num
+    if os.path.exists(SCHEDULE_RECORD_FILE):
+        try:
+            df_s_check = pd.read_csv(SCHEDULE_RECORD_FILE)
+            if not df_s_check.empty:
+                uploaded_weeks = df_s_check["week_key"].str.extract(r'W(\d+)')[0].dropna().astype(int).tolist()
+                if uploaded_weeks:
+                    latest_week_num = max(uploaded_weeks)
+        except Exception:
+            pass
 
+    latest_week_key = f"Y{PLAN_YEAR}-W{latest_week_num:02d}"
+    latest_week_label = f"第 {PLAN_YEAR} 年 - 第 {latest_week_num:02d} 週"
+
+    # 2. 中間：查詢過往進度表 (折疊選單)
+    with st.expander("🔍 點此查詢【過往歷史進度表】", expanded=False):
         all_weeks_options = [f"Y{PLAN_YEAR}-W{w:02d} (第 {w} 週)" for w in range(1, 53)]
+        selected_hist_str = st.selectbox("請選擇要查詢的過往週別：", all_weeks_options, index=max(0, latest_week_num-2))
         
-        # 預設選取最新發布的週數
-        default_index = max(0, latest_week_num - 1)
-        selected_w_str = st.selectbox("選擇要查看的週別進度圖：", all_weeks_options, index=default_index)
+        hist_target_key = selected_hist_str.split(" ")[0]
+        hist_img_path = get_schedule_image_path(hist_target_key)
         
-        target_img_week = selected_w_str.split(" ")[0]
-        target_img_label = selected_w_str
-            
-        img_path = get_schedule_image_path(target_img_week)
-        if img_path:
-            st.image(img_path, caption=f"【{target_img_label}】進度表", use_container_width=True)
+        if hist_img_path:
+            st.image(hist_img_path, caption=f"【{selected_hist_str}】歷史進度表", use_container_width=True)
         else:
-            st.warning(f"📌 目前尚未上傳【{target_img_label}】的進度表圖片，敬請期待管理者更新！")
+            st.warning(f"📌 未找到【{selected_hist_str}】的歷史圖檔。")
+
+    # 3. 下方：直接呈現【最新進度表】
+    st.markdown(f"#### 🗓️ 最新進度表（{latest_week_label}）")
+    latest_img_path = get_schedule_image_path(latest_week_key)
+    if latest_img_path:
+        st.image(latest_img_path, caption=f"【{latest_week_label}】進度對照表", use_container_width=True)
+    else:
+        st.warning(f"📌 目前尚未上傳【{latest_week_label}】的進度表圖片，敬請期待更新！")
 
     st.divider()
 
@@ -479,12 +498,11 @@ with tab_admin:
             else:
                 st.info("尚無簽到紀錄。")
 
-        # 2. 上傳/更新進度圖表 (預設帶入下週 W+1)
+        # 2. 上傳/更新進度圖表 (預設帶入下週)
         with sub2:
             st.markdown("### 🖼️ 上傳每週讀經進度表圖片")
-            st.info("💡 每週五提前上傳時，系統預設已為您切換至【下週進度】。")
+            st.info("💡 每週五提前上傳時，系統預設已為您帶入【下週進度】。")
             
-            # 預設帶入下一週 (current_week_num)
             next_week_idx = min(51, current_week_num) 
             upload_week_num = st.selectbox("選擇要上傳的週別：", list(range(1, 53)), index=next_week_idx)
             target_upload_key = f"Y{PLAN_YEAR}-W{upload_week_num:02d}"
