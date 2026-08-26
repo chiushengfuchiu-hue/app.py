@@ -36,7 +36,7 @@ st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="�
 # 2. 資料庫與邏輯處理
 # ==========================================
 def load_attendance():
-    def delete_single_record(week_key, member_name):
+def delete_single_record(week_key, member_name):
     """刪除特定會友某週的簽到紀錄"""
     df = load_attendance()
     week_key = str(week_key).strip()
