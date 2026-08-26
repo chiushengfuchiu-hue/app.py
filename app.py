@@ -248,7 +248,10 @@ tab_user, tab_admin = st.tabs(["✍️ 會友簽到專區", "🔒 後台統計�
 # ------------------------------------------
 with tab_user:
     verse_info = get_weekly_verse(current_week_num)
-    st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
+    
+    # 組合顯示內容：含經文、出處與鼓勵的話
+    enc_text = f"\n\n💬 **心靈補給**：{verse_info['encouragement']}" if verse_info.get('encouragement') else ""
+    st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**{enc_text}")
 
     st.markdown("#### 🗓️ 讀經進度表查詢")
     
