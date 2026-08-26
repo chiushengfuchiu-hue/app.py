@@ -6,7 +6,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # =========================================================
-# 1. Google Sheets 串接與讀寫函式 (已自動修正私鑰格式)
+# 1. Google Sheets 串接與讀寫函式 (雲端永久儲存)
 # =========================================================
 @st.cache_resource
 def get_gsheet_client():
@@ -60,7 +60,6 @@ st.set_page_config(
 )
 
 MEMBERS_FILE = "church_members.csv"
-VERSES_FILE = "verses.csv"
 SCHEDULE_RECORD_FILE = "schedule_records.csv"
 SCHEDULE_DIR = "schedules_img"
 ADMIN_PASSWORD = "biblecheckin"
@@ -79,14 +78,6 @@ INITIAL_MEMBERS = [
     "林雅音", "劉淑珠", "葉雅雲", "趙文川"
 ]
 
-# 初始化名單檔案
-if not os.path.exists(MEMBERS_FILE):
-    pd.DataFrame({"name": INITIAL_MEMBERS}).to_csv(MEMBERS_FILE, index=False)
-
-# 初始化週曆紀錄檔
-if not os.path.exists(SCHEDULE_RECORD_FILE):
-    pd.DataFrame(columns=["year", "week", "img_path"]).to_csv(SCHEDULE_RECORD_FILE, index=False)
-
 def load_members():
     if os.path.exists(MEMBERS_FILE):
         try:
@@ -94,7 +85,6 @@ def load_members():
             if "name" in df.columns:
                 return df["name"].dropna().tolist()
             elif not df.empty:
-                # 若無 name 欄位，嘗試抓取第一欄
                 return df.iloc[:, 0].dropna().tolist()
         except Exception:
             pass
@@ -103,60 +93,68 @@ def load_members():
 def save_members(members_list):
     pd.DataFrame({"name": members_list}).to_csv(MEMBERS_FILE, index=False)
 
+# 初始化名單檔案
+if not os.path.exists(MEMBERS_FILE):
+    save_members(INITIAL_MEMBERS)
+
+# 初始化週曆紀錄檔
+if not os.path.exists(SCHEDULE_RECORD_FILE):
+    pd.DataFrame(columns=["year", "week", "img_path"]).to_csv(SCHEDULE_RECORD_FILE, index=False)
+
 # =========================================================
-# 3. 自訂 CSS 樣式與視覺包裝
+# 3. 自訂 CSS 樣式 (還原原始經典介面)
 # =========================================================
 st.markdown("""
     <style>
-    .main-header {
-        font-size: 2.2rem;
-        font-weight: bold;
+    .main-title {
+        font-size: 2.5rem;
+        font-weight: 800;
         color: #1E3A8A;
         text-align: center;
+        padding: 10px;
+        background: linear-gradient(90deg, #E0E7FF 0%, #EEF2FF 100%);
+        border-radius: 12px;
+        margin-bottom: 25px;
+    }
+    .sub-card {
+        background-color: #FFFFFF;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         margin-bottom: 20px;
-    }
-    .stButton>button {
-        background-color: #2563EB;
-        color: white;
-        border-radius: 8px;
-        font-weight: bold;
-    }
-    .metric-card {
-        background-color: #F3F4F6;
-        padding: 15px;
-        border-radius: 10px;
-        text-align: center;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# 4. 側邊欄與頁面分頁導覽
+# 4. 導覽列與分頁設定
 # =========================================================
+st.sidebar.image("https://img.icons8.com/isometric/512/open-book.png", width=80)
 st.sidebar.title("📖 讀經計畫導覽")
 page = st.sidebar.radio(
-    "前往頁面：", 
+    "請選擇功能：", 
     ["✍️ 會友打卡簽到", "📊 簽到紀錄與進度表", "📅 週曆與經文對照", "⚙️ 後台系統管理"]
 )
 
 members = load_members()
 
 # ---------------------------------------------------------
-# 頁面 1：會友打卡簽到
+# 頁面 1：會友打卡簽到 (原始雙欄配置 + 即時預覽)
 # ---------------------------------------------------------
 if page == "✍️ 會友打卡簽到":
-    st.markdown("<div class='main-header'>📖 教會 4 年讀經計畫 - 會友簽到</div>", unsafe_allow_html=True)
+    st.markdown("<div class='main-title'>📖 教會 4 年讀經計畫 - 會友打卡</div>", unsafe_allow_html=True)
     
     col1, col2 = st.columns([1, 1])
     
     with col1:
-        st.subheader("✍️ 打卡資料填寫")
-        selected_member = st.selectbox("請選擇您的姓名：", members)
-        current_week = st.number_input("請選擇讀經週數 (第 1 ~ 208 週)：", min_value=1, max_value=208, value=1)
+        st.subheader("✍️ 填寫打卡資訊")
+        selected_member = st.selectbox("請選擇您的名字：", members)
+        current_week = st.number_input("請選擇週數 (第 1 ~ 208 週)：", min_value=1, max_value=208, value=1)
         today_str = datetime.date.today().strftime("%Y-%m-%d")
-        note = st.text_input("備註（可不填）：", "")
+        st.write(f"📅 打卡日期：**{today_str}**")
+        note = st.text_input("備註說明（選填）：", "")
         
-        if st.button("🚀 確認簽到", use_container_width=True):
+        if st.button("🚀 完成簽到", type="primary", use_container_width=True):
             if selected_member:
                 success = save_attendance(
                     name=selected_member, 
@@ -166,123 +164,115 @@ if page == "✍️ 會友打卡簽到":
                     note=note
                 )
                 if success:
-                    st.success(f"🎉 【{selected_member}】 第 {current_week} 週讀經簽到成功！")
+                    st.success(f"🎉 感謝上帝！【{selected_member}】 第 {current_week} 週讀經簽到成功！")
                     st.balloons()
                     st.rerun()
 
     with col2:
-        st.subheader("📋 最新簽到動態")
+        st.subheader("📋 最新雲端簽到動態")
         df_att = load_attendance()
         if not df_att.empty:
-            recent_df = df_att.tail(10).iloc[::-1]
-            st.dataframe(recent_df, use_container_width=True)
+            st.dataframe(df_att.tail(10).iloc[::-1], use_container_width=True, height=350)
         else:
-            st.info("目前尚無簽到紀錄。")
+            st.info("目前尚無簽到紀錄，或資料讀取中...")
 
 # ---------------------------------------------------------
-# 頁面 2：簽到紀錄與進度表
+# 頁面 2：簽到紀錄與進度表 (原始多分頁報表)
 # ---------------------------------------------------------
 elif page == "📊 簽到紀錄與進度表":
-    st.markdown("<div class='main-header'>📊 個人與全體讀經進度總覽</div>", unsafe_allow_html=True)
+    st.markdown("<div class='main-title'>📊 全體與個人讀經進度分析</div>", unsafe_allow_html=True)
     
     df_att = load_attendance()
     
-    if df_att.empty:
-        st.warning("目前尚無任何簽到紀錄，無法顯示統計報表。")
-    else:
-        st.subheader("📈 總覽指標")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("已總簽到人次", len(df_att))
-        c2.metric("參與會友總數", len(df_att["name"].unique()))
-        c3.metric("目前最高簽到週數", df_att["week"].max())
-        
-        st.divider()
-        
-        st.subheader("🔍 會友個人歷程查詢")
-        search_member = st.selectbox("選擇會友姓名：", members)
-        member_df = df_att[df_att["name"] == search_member]
-        
-        if not member_df.empty:
-            st.write(f"【{search_member}】的已簽到週數紀錄：")
-            st.dataframe(member_df, use_container_width=True)
+    tab_summary, tab_personal, tab_matrix = st.tabs(["📈 總覽數據", "🔍 個人歷程", "🧩 全員打卡矩陣圖"])
+    
+    with tab_summary:
+        if not df_att.empty:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("總簽到人次", len(df_att))
+            c2.metric("已參與人數", len(df_att["name"].unique()))
+            c3.metric("最高讀經週數", df_att["week"].max())
+            st.divider()
+            st.dataframe(df_att, use_container_width=True)
         else:
-            st.info(f"【{search_member}】目前尚未有簽到紀錄。")
+            st.info("目前尚無簽到紀錄。")
             
-        st.divider()
-        st.subheader("📄 完整雲端數據庫對照（Google Sheets）")
-        st.dataframe(df_att, use_container_width=True, height=400)
+    with tab_personal:
+        s_member = st.selectbox("選擇要查詢的會友：", members)
+        if not df_att.empty:
+            p_df = df_att[df_att["name"] == s_member]
+            if not p_df.empty:
+                st.write(f"**{s_member}** 的讀經簽到總筆數：{len(p_df)} 筆")
+                st.dataframe(p_df, use_container_width=True)
+            else:
+                st.warning(f"【{s_member}】目前尚未簽到。")
+                
+    with tab_matrix:
+        st.subheader("🧩 34位會友打卡進度圖")
+        if not df_att.empty:
+            # 建立透視表
+            matrix_df = df_att.pivot_table(index="name", columns="week", values="status", aggfunc="first").fillna("❌")
+            st.dataframe(matrix_df, use_container_width=True)
+        else:
+            st.info("暫無數據可製作矩陣圖。")
 
 # ---------------------------------------------------------
 # 頁面 3：週曆與經文對照
 # ---------------------------------------------------------
 elif page == "📅 週曆與經文對照":
-    st.markdown("<div class='main-header'>📅 讀經週曆與經文對照</div>", unsafe_allow_header=True if False else True)
+    st.markdown("<div class='main-title'>📅 讀經進度對照圖表</div>", unsafe_allow_html=True)
     
-    view_week = st.number_input("查看目標週數：", min_value=1, max_value=208, value=1)
-    
-    st.info(f"📖 第 {view_week} 週讀經進度規劃")
+    v_week = st.number_input("輸入欲對照的週數：", min_value=1, max_value=208, value=1)
     
     if os.path.exists(SCHEDULE_RECORD_FILE):
         sch_df = pd.read_csv(SCHEDULE_RECORD_FILE)
-        matched = sch_df[sch_df["week"] == view_week]
+        matched = sch_df[sch_df["week"] == v_week]
         if not matched.empty:
             img_path = matched.iloc[-1]["img_path"]
             if os.path.exists(img_path):
-                st.image(img_path, caption=f"第 {view_week} 週對照圖表", use_container_width=True)
+                st.image(img_path, caption=f"第 {v_week} 週進度圖表", use_container_width=True)
             else:
-                st.warning("找不到對應的週曆圖檔。")
+                st.warning("圖片檔案未找到。")
         else:
-            st.info("管理員尚未上傳該週的週曆對照圖。")
+            st.info(f"第 {v_week} 週尚未上傳對照圖片。")
 
 # ---------------------------------------------------------
 # 頁面 4：後台系統管理
 # ---------------------------------------------------------
 elif page == "⚙️ 後台系統管理":
-    st.markdown("<div class='main-header'>⚙️ 後台管理系統</div>", unsafe_allow_html=True)
+    st.markdown("<div class='main-title'>⚙️ 系統後台管理</div>", unsafe_allow_html=True)
     
     pwd = st.text_input("請輸入管理員密碼：", type="password")
     
     if pwd == ADMIN_PASSWORD:
-        st.success("身分驗證成功！")
+        st.success("密碼正確，歡迎使用後台！")
         
-        tab1, tab2, tab3 = st.tabs(["👥 會友名單管理", "🖼️ 上傳週曆圖檔", "📊 數據備份與清理"])
+        m_tab1, m_tab2 = st.tabs(["👥 會友名單調整", "🖼️ 上傳週曆進度圖"])
         
-        with tab1:
-            st.subheader("新增 / 刪除會友名單")
-            curr_members = load_members()
-            st.write("目前名單（共", len(curr_members), "位）：")
-            st.write(", ".join(curr_members))
-            
-            new_m = st.text_input("新增會友姓名：")
-            if st.button("新增會友"):
-                if new_m and new_m not in curr_members:
-                    curr_members.append(new_m)
-                    save_members(curr_members)
-                    st.success(f"已成功新增 {new_m}")
+        with m_tab1:
+            st.write("目前成員名單：", members)
+            add_name = st.text_input("輸入新成員姓名：")
+            if st.button("新增成員"):
+                if add_name and add_name not in members:
+                    members.append(add_name)
+                    save_members(members)
+                    st.success(f"已成功新增 {add_name}")
                     st.rerun()
                     
-        with tab2:
-            st.subheader("上傳該週進度對照圖")
-            up_week = st.number_input("設定週數：", min_value=1, max_value=208, value=1)
-            uploaded_file = st.file_uploader("選擇進度圖片：", type=["png", "jpg", "jpeg"])
-            
-            if uploaded_file and st.button("儲存圖片"):
-                file_path = os.path.join(SCHEDULE_DIR, f"week_{up_week}.png")
-                with open(file_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+        with m_tab2:
+            up_w = st.number_input("設定上傳週數：", min_value=1, max_value=208, value=1)
+            up_file = st.file_uploader("選擇圖片檔案：", type=["png", "jpg", "jpeg"])
+            if up_file and st.button("儲存這張圖片"):
+                save_path = os.path.join(SCHEDULE_DIR, f"week_{up_w}.png")
+                with open(save_path, "wb") as f:
+                    f.write(up_file.getbuffer())
                 
                 sch_df = pd.read_csv(SCHEDULE_RECORD_FILE)
-                sch_df = sch_df[sch_df["week"] != up_week]
-                new_row = pd.DataFrame([{"year": PLAN_YEAR, "week": up_week, "img_path": file_path}])
-                sch_df = pd.concat([sch_df, new_row], ignore_index=False)
+                sch_df = sch_df[sch_df["week"] != up_w]
+                new_row = pd.DataFrame([{"year": PLAN_YEAR, "week": up_w, "img_path": save_path}])
+                sch_df = pd.concat([sch_df, new_row], ignore_index=True)
                 sch_df.to_csv(SCHEDULE_RECORD_FILE, index=False)
-                st.success(f"第 {up_week} 週圖片已更新成功！")
+                st.success(f"第 {up_w} 週進度圖更換成功！")
                 
-        with tab3:
-            st.subheader("雲端資料狀態")
-            st.write("目前所有簽到數據已即時同步保存於 Google 試算表（`Church_Attendance`）。")
-            df_curr = load_attendance()
-            st.metric("雲端總筆數", len(df_curr))
-            
     elif pwd != "":
-        st.error("密碼錯誤，請重新輸入！")
+        st.error("密碼不正確！")
