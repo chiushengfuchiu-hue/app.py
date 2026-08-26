@@ -87,6 +87,18 @@ def add_single_record(week_key, member_name):
     return True
 
 def load_members():
+    """優先讀取檔案資料，讓後台的新增與修改可以永久保存"""
+    if os.path.exists(MEMBERS_FILE):
+        try:
+            df_m = pd.read_csv(MEMBERS_FILE, encoding="utf-8-sig")
+            if "member_name" in df_m.columns and not df_m.empty:
+                # 確保名字沒有空白
+                df_m["member_name"] = df_m["member_name"].astype(str).str.strip()
+                return df_m
+        except Exception:
+            pass
+            
+    # 若檔案不存在或讀取失敗，才寫入預設名單
     df_m = pd.DataFrame({"member_name": INITIAL_MEMBERS})
     df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
     return df_m
