@@ -115,13 +115,21 @@ def save_members(members_list):
     pd.DataFrame({"member_name": members_list}).to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
 
 def get_weekly_verse(week_num):
-    fallback = {"verse": "「你的話是我腳前的燈，是我路上的光。」", "ref": "詩篇 119:105"}
+    fallback = {
+        "verse": "「你的話是我腳前的燈，是我路上的光。」", 
+        "ref": "詩篇 119:105",
+        "encouragement": "讓上帝的話語成為你每日的亮光與引導！"
+    }
     if os.path.exists(VERSES_FILE):
         try:
             v_df = pd.read_csv(VERSES_FILE)
             if not v_df.empty:
                 row = v_df.iloc[(week_num - 1) % len(v_df)]
-                return {"verse": str(row["verse"]), "ref": str(row["ref"])}
+                return {
+                    "verse": str(row["verse"]), 
+                    "ref": str(row["ref"]),
+                    "encouragement": str(row.get("encouragement", "")) # 抓取 encouragement 欄位
+                }
         except Exception:
             pass
     return fallback
