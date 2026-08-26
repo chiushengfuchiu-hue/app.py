@@ -585,3 +585,58 @@ with tab_admin:
                 
     elif pwd != "":
         st.error("密碼錯誤！")
+# ==========================================
+# 4. 一鍵批次補簽專用區（執行完可刪除）
+# ==========================================
+with tab_admin:
+    if pwd == ADMIN_PASSWORD:
+        # 在後台新增第 5 個分頁
+        with st.expander("🚀 批次初始化資料工具（一次性使用）", expanded=True):
+            st.warning("⚠️ 此工具將會為指定名單自動補滿 第 1 週 ~ 第 33 週 的簽到紀錄！")
+            
+            target_members = [
+                "周寶燕", "曾笑", "黃然玉", "吳妃玉", "楊游美麗", 
+                "翁淑美", "石美莎", "單麗蘭", "鄭富美", 
+                "趙文崇", "李應昌", "林春妙", "邱文雀", 
+                "梁垠盤", "陳宜宏", "郭彩梅", "林春桃", "鳳姐", 
+                "黃敏生", "吳秀卉", "程乃珍", "蕭慧麗", 
+                "蔡慧俐", "林雅谷", "李俊修", "盧正亮", 
+                "劉淑珠", "葉雅雲"
+            ]
+            
+            st.write(f"預計處理人數：**{len(target_members)}** 人，每人補簽：**第 1~33 週**（共 {len(target_members) * 33} 筆紀錄）")
+            
+            if st.button("⚡ 確定執行批次補簽 (1~33週)"):
+                with st.spinner("⏳ 正在寫入 Google Sheets 雲端資料庫，請稍候..."):
+                    try:
+                        client = get_gsheet_client()
+                        sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+                        sheet = client.open(sheet_name).sheet1
+                        
+                        # 抓取雲端現有紀錄，避免重複寫入
+                        existing_records = sheet.get_all_records()
+                        existing_set = {(str(r.get("week_key")).strip(), str(r.get("member_name")).strip()) for r in existing_records}
+                        
+                        new_rows = []
+                        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        # 組合 1~33 週的資料
+                        for member in target_members:
+                            for w in range(1, 34):
+                                w_key = f"Y{PLAN_YEAR}-W{w:02d}"
+                                if (w_key, member) not in existing_set:
+                                    new_rows.append([w_key, member, now_str])
+                        
+                        if new_rows:
+                            # 一次性批量追加寫入雲端（效率極高，不會被 Google 擋）
+                            sheet.append_rows(new_rows)
+                            st.success(f"🎉 成功補簽 {len(new_rows)} 筆紀錄！")
+                            # 清空快取讓畫面立即更新
+                            if "attendance_data" in st.session_state:
+                                del st.session_state["attendance_data"]
+                            st.rerun()
+                        else:
+                            st.info("💡 這些會友在 1~33 週的紀錄先前已經全部存在，無需重複寫入。")
+                            
+                    except Exception as e:
+                        st.error(f"❌ 批次寫入失敗：{e}")
