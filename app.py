@@ -13,7 +13,7 @@ VERSES_FILE = "verses.csv"
 SCHEDULE_RECORD_FILE = "schedule_records.csv"
 ATTENDANCE_FILE = "attendance_records.csv"  # 本地簽到資料庫
 SCHEDULE_DIR = "schedules_img"
-ADMIN_PASSWORD = "church_admin"
+ADMIN_PASSWORD = "1234"
 
 PLAN_YEAR = 2 
 
@@ -26,7 +26,8 @@ INITIAL_MEMBERS = [
     "梁垠盤", "陳宜宏", "郭彩梅", "林春桃", "鳳姐", 
     "黃敏生", "吳秀卉", "陳安俐", "程乃珍", "蕭慧麗", 
     "蔡慧俐", "林雅谷", "李俊修", "林淑惠", "盧正亮", 
-    "林雅音", "劉淑珠", "葉雅雲", "趙文川"
+    "翁春祝", "劉淑珠", "葉雅雲", "林雅音", "趙文川",
+    "邱聖富",
 ]
 
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
