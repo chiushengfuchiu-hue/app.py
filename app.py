@@ -234,13 +234,18 @@ def save_schedule_record(week_key, uploaded_file):
     df_s.to_csv(SCHEDULE_RECORD_FILE, index=False, encoding="utf-8-sig")
 
 # ==========================================
-# 3. Session State 狀態初始化
+# 3. Session State 狀態初始化 (週日為一週開始)
 # ==========================================
 if "current_member" not in st.session_state:
     st.session_state.current_member = None
 
 now = datetime.datetime.now()
-current_week_num = now.isocalendar()[1]
+
+# 調整週日為一週第一天：如果是週日(weekday==6)，週數加 1
+is_sunday = (now.weekday() == 6)
+calc_date = now + datetime.timedelta(days=1) if is_sunday else now
+current_week_num = calc_date.isocalendar()[1]
+
 current_week_key = f"Y{PLAN_YEAR}-W{current_week_num:02d}"
 current_week_display = f"第 {PLAN_YEAR} 年 - 第 {current_week_num:02d} 週"
 
@@ -260,19 +265,29 @@ with tab_user:
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
 
     # ----------------------------------------------------
-    # 進度圖表展開與歷史查詢專區
+    # 進度圖表展開與歷史查詢專區 (自動顯示最新上傳圖檔)
     # ----------------------------------------------------
     with st.expander("🖼️ 點此查看【本週/歷史進度對照表】", expanded=False):
-        query_mode = st.radio("選擇查詢模式：", ["查詢本週進度圖", "查詢歷史週別進度圖"], horizontal=True)
+        # 取得已上傳的最大週數，若無則預設為當週
+        latest_week_num = current_week_num
+        if os.path.exists(SCHEDULE_RECORD_FILE):
+            try:
+                df_s_check = pd.read_csv(SCHEDULE_RECORD_FILE)
+                if not df_s_check.empty:
+                    uploaded_weeks = df_s_check["week_key"].str.extract(r'W(\d+)')[0].dropna().astype(int).tolist()
+                    if uploaded_weeks:
+                        latest_week_num = max(uploaded_weeks)
+            except Exception:
+                pass
+
+        all_weeks_options = [f"Y{PLAN_YEAR}-W{w:02d} (第 {w} 週)" for w in range(1, 53)]
         
-        if "本週" in query_mode:
-            target_img_week = current_week_key
-            target_img_label = current_week_display
-        else:
-            all_weeks = [f"Y{PLAN_YEAR}-W{w:02d} (第 {w} 週)" for w in range(1, 53)]
-            selected_w_str = st.selectbox("選擇要查看的週別：", all_weeks, index=max(0, current_week_num-1))
-            target_img_week = selected_w_str.split(" ")[0]
-            target_img_label = selected_w_str
+        # 預設選取最新發布的週數
+        default_index = max(0, latest_week_num - 1)
+        selected_w_str = st.selectbox("選擇要查看的週別進度圖：", all_weeks_options, index=default_index)
+        
+        target_img_week = selected_w_str.split(" ")[0]
+        target_img_label = selected_w_str
             
         img_path = get_schedule_image_path(target_img_week)
         if img_path:
@@ -464,12 +479,14 @@ with tab_admin:
             else:
                 st.info("尚無簽到紀錄。")
 
-        # 2. 上傳/更新進度圖表
+        # 2. 上傳/更新進度圖表 (預設帶入下週 W+1)
         with sub2:
             st.markdown("### 🖼️ 上傳每週讀經進度表圖片")
-            st.info("💡 每週製作好進度表圖片後，在此選擇對應週別並上傳，會友在前台點擊即可馬上看到！")
+            st.info("💡 每週五提前上傳時，系統預設已為您切換至【下週進度】。")
             
-            upload_week_num = st.selectbox("選擇要上傳的週別：", list(range(1, 53)), index=current_week_num-1)
+            # 預設帶入下一週 (current_week_num)
+            next_week_idx = min(51, current_week_num) 
+            upload_week_num = st.selectbox("選擇要上傳的週別：", list(range(1, 53)), index=next_week_idx)
             target_upload_key = f"Y{PLAN_YEAR}-W{upload_week_num:02d}"
             
             uploaded_schedule_file = st.file_uploader(f"上傳【第 {upload_week_num} 週】進度表圖片 (支援 JPG, PNG)", type=["png", "jpg", "jpeg"])
