@@ -11,15 +11,14 @@ from google.oauth2.service_account import Credentials
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
 SCHEDULE_RECORD_FILE = "schedule_records.csv"
-ATTENDANCE_FILE = "attendance_records.csv"  # 本地簽到資料庫
+ATTENDANCE_FILE = "attendance_records.csv"
 SCHEDULE_DIR = "schedules_img"
-ADMIN_PASSWORD = "610113"
+ADMIN_PASSWORD = "church_admin"
 
 PLAN_YEAR = 2 
 
 os.makedirs(SCHEDULE_DIR, exist_ok=True)
 
-# 36 位會友完整名單
 INITIAL_MEMBERS = [
     "周寶燕", "曾笑", "黃然玉", "吳妃玉", "楊游美麗", 
     "翁淑美", "石美莎", "單麗蘭", "鄭富美", "李鶯芳", 
@@ -34,10 +33,9 @@ INITIAL_MEMBERS = [
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
-# 2. 資料庫與 API 處理邏輯
+# 2. 資料庫與邏輯處理
 # ==========================================
 def load_attendance():
-    """載入簽到紀錄"""
     if os.path.exists(ATTENDANCE_FILE):
         try:
             df = pd.read_csv(ATTENDANCE_FILE, dtype=str)
@@ -52,11 +50,9 @@ def load_attendance():
     return pd.DataFrame(columns=["week_key", "member_name", "timestamp"])
 
 def save_attendance(df):
-    """儲存簽到紀錄至本地"""
     df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8-sig")
 
 def sync_to_gsheet_async(new_rows_list):
-    """背景備份寫入 Google Sheets"""
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds_dict = dict(st.secrets["gcp_service_account"])
@@ -77,7 +73,6 @@ def sync_to_gsheet_async(new_rows_list):
         pass
 
 def add_single_record(week_key, member_name):
-    """新增單筆簽到"""
     df = load_attendance()
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     week_key = str(week_key).strip()
@@ -92,7 +87,6 @@ def add_single_record(week_key, member_name):
     return True
 
 def load_members():
-    """強制更新並讀取最新會友名單"""
     df_m = pd.DataFrame({"member_name": INITIAL_MEMBERS})
     df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
     return df_m
@@ -132,6 +126,42 @@ def save_schedule_record(week_key, uploaded_file):
     df_s = df_s[df_s["week_key"] != week_key]
     df_s = pd.concat([df_s, pd.DataFrame([{"week_key": week_key, "image_path": file_path}])], ignore_index=True)
     df_s.to_csv(SCHEDULE_RECORD_FILE, index=False, encoding="utf-8-sig")
+
+def generate_pivot_report(target_year, max_week):
+    """產生如截圖範本格式的矩陣總表"""
+    df_att = load_attendance()
+    members = load_members()["member_name"].tolist()
+    
+    # 建立基礎 DataFrame
+    report_data = []
+    
+    # 找出該年份該範圍內所有週號
+    week_cols = [f"Y{target_year}-W{w:02d}" for w in range(1, max_week + 1)]
+    
+    for m in members:
+        row = {"member_name": m}
+        completed_count = 0
+        
+        # 抓取個人已簽到的週號集合
+        m_signed = set(df_att[df_att["member_name"] == m]["week_key"].tolist())
+        
+        for w_col in week_cols:
+            if w_col in m_signed:
+                row[w_col] = "⚪ 已讀"
+                completed_count += 1
+            else:
+                row[w_col] = "❌"
+        
+        row["完成週數"] = f"{completed_count} / {max_week}"
+        row["完成率"] = f"{(completed_count / max_week * 100):.2f}%" if max_week > 0 else "0.00%"
+        
+        report_data.append(row)
+        
+    df_report = pd.DataFrame(report_data)
+    
+    # 調整欄位順序 (member_name -> 完成週數 -> 完成率 -> 週數欄位)
+    cols_order = ["member_name", "完成週數", "完成率"] + week_cols
+    return df_report[cols_order]
 
 # ==========================================
 # 3. CSS 樣式美化
@@ -201,36 +231,27 @@ with tab_user:
     verse_info = get_weekly_verse(current_week_num)
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
 
-    # --------------------------------------
-    # 🗓️ 歷史與最新進度表查詢區塊 (新增選單功能)
-    # --------------------------------------
+    # --- 🗓️ 讀經進度表查詢 (支援跨年份查閱) ---
     st.markdown("#### 🗓️ 讀經進度表查詢")
     
-    # 計算最新有上傳圖片的週數
-    latest_uploaded_week = current_week_num
-    if os.path.exists(SCHEDULE_RECORD_FILE):
-        try:
-            df_s_check = pd.read_csv(SCHEDULE_RECORD_FILE)
-            if not df_s_check.empty:
-                uploaded_weeks = df_s_check["week_key"].str.extract(r'W(\d+)')[0].dropna().astype(int).tolist()
-                if uploaded_weeks: 
-                    latest_uploaded_week = max(max(uploaded_weeks), current_week_num)
-        except Exception: pass
-
-    # 建立可供選擇的選項選單
-    week_options = [f"第 {PLAN_YEAR} 年 - 第 {w:02d} 週" for w in range(latest_uploaded_week, 0, -1)]
+    col_y, col_w = st.columns([1, 2])
+    with col_y:
+        selected_year = st.selectbox("請選擇年份：", [f"第 {y} 年 (Y{y})" for y in range(PLAN_YEAR, 0, -1)], index=0)
+        target_y_num = int(selected_year.split("第 ")[1].split(" 年")[0])
     
-    selected_week_label = st.selectbox("👇 請選擇欲查看的週數進度表：", week_options, index=0)
-    
-    # 解析選中的週號與 week_key
-    selected_week_num = int(selected_week_label.split("第 ")[2].replace(" 週", ""))
-    selected_week_key = f"Y{PLAN_YEAR}-W{selected_week_num:02d}"
-    
+    with col_w:
+        max_w_display = current_week_num if target_y_num == PLAN_YEAR else 52
+        week_options = [f"第 {w:02d} 週" for w in range(max_w_display, 0, -1)]
+        selected_w_label = st.selectbox("請選擇週數：", week_options, index=0)
+        target_w_num = int(selected_w_label.replace("第 ", "").replace(" 週", ""))
+        
+    selected_week_key = f"Y{target_y_num}-W{target_w_num:02d}"
     selected_img_path = get_schedule_image_path(selected_week_key)
+    
     if selected_img_path:
-        st.image(selected_img_path, caption=f"【{selected_week_label}】進度對照表", use_container_width=True)
+        st.image(selected_img_path, caption=f"【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】進度對照表", use_container_width=True)
     else:
-        st.warning(f"📌 目前尚未上傳【{selected_week_label}】的進度表圖片。")
+        st.warning(f"📌 目前尚未上傳【Y{target_y_num}-W{target_w_num:02d}】的進度表圖片。")
 
     st.divider()
 
@@ -328,37 +349,67 @@ with tab_admin:
     if pwd == ADMIN_PASSWORD:
         st.success("🔓 驗證成功，歡迎進入後台管理系統！")
         
-        admin_sub_tab1, admin_sub_tab2, admin_sub_tab3, admin_sub_tab4 = st.tabs([
-            "📊 簽到數據總覽", 
-            "🗓️ 上傳進度表圖片", 
-            "👥 會友名單編輯", 
-            "📥 匯出資料備份"
+        admin_sub_tab1, admin_sub_tab2, admin_sub_tab3 = st.tabs([
+            "📊 簽到進度總覽與匯出", 
+            "🗓️ 上傳跨年進度表圖片", 
+            "👥 會友名單編輯"
         ])
         
-        # --- 子功能 1: 簽到數據總覽 ---
+        # --- 子功能 1: 簽到總覽與四大區間匯出 ---
         with admin_sub_tab1:
-            st.markdown("### 📊 簽到數據統計")
-            total_records = len(df_attendance)
-            unique_members = df_attendance["member_name"].nunique() if not df_attendance.empty else 0
+            st.markdown("### 📊 全會友讀經簽到進度總表")
             
-            c1, c2 = st.columns(2)
-            c1.metric("目前總簽到人次", f"{total_records} 次")
-            c2.metric("已有簽到紀錄會友數", f"{unique_members} 人")
+            # 選擇統計區間
+            time_range = st.selectbox(
+                "📅 請選擇匯出與統計時間區間：",
+                ["最近 4 週", "本季度 (13 週)", "半年 (26 週)", "全年度 (52 週)"]
+            )
             
-            st.divider()
-            st.markdown("#### 🔍 簽到紀錄明細表")
-            if not df_attendance.empty:
-                st.dataframe(df_attendance.sort_values(by="timestamp", ascending=False), use_container_width=True)
-            else:
-                st.info("尚無任何簽到紀錄。")
+            # 計算對應要顯示的最大週數
+            if time_range == "最近 4 週":
+                range_weeks = max(1, current_week_num - 3)
+                df_pivot = generate_pivot_report(PLAN_YEAR, current_week_num)
+                # 切片保留最近 4 週
+                target_cols = ["member_name", "完成週數", "完成率"] + [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(range_weeks, current_week_num + 1)]
+                df_pivot = df_pivot[target_cols]
+            elif time_range == "本季度 (13 週)":
+                range_weeks = max(1, current_week_num - 12)
+                df_pivot = generate_pivot_report(PLAN_YEAR, current_week_num)
+                target_cols = ["member_name", "完成週數", "完成率"] + [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(range_weeks, current_week_num + 1)]
+                df_pivot = df_pivot[target_cols]
+            elif time_range == "半年 (26 週)":
+                range_weeks = max(1, current_week_num - 25)
+                df_pivot = generate_pivot_report(PLAN_YEAR, current_week_num)
+                target_cols = ["member_name", "完成週數", "完成率"] + [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(range_weeks, current_week_num + 1)]
+                df_pivot = df_pivot[target_cols]
+            else: # 全年度
+                df_pivot = generate_pivot_report(PLAN_YEAR, 52)
 
-        # --- 子功能 2: 上傳進度表圖片 ---
-        with admin_sub_tab2:
-            st.markdown("### 🗓️ 上傳/更換每週進度表圖片")
-            target_week = st.number_input("選擇週數 (1~52)：", min_value=1, max_value=52, value=current_week_num)
-            up_week_key = f"Y{PLAN_YEAR}-W{target_week:02d}"
+            st.dataframe(df_pivot, use_container_width=True, height=500)
             
-            uploaded_img = st.file_uploader(f"請上傳【第 {PLAN_YEAR} 年 - 第 {target_week:02d} 週】進度對照表圖檔：", type=["png", "jpg", "jpeg"])
+            # 匯出按鈕
+            csv_data = df_pivot.to_csv(index=False, encoding="utf-8-sig")
+            st.download_button(
+                label=f"📥 下載【{time_range}】簽到統計 Excel 報表 (CSV)",
+                data=csv_data,
+                file_name=f"Church_Attendance_{time_range}_{datetime.datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                type="primary"
+            )
+
+        # --- 子功能 2: 跨年份上傳進度表圖片 ---
+        with admin_sub_tab2:
+            st.markdown("### 🗓️ 上傳/更換進度表圖片（含歷史年份）")
+            
+            up_col1, up_col2 = st.columns(2)
+            with up_col1:
+                up_year = st.number_input("選擇年份 (如: 1代表第1年, 2代表第2年)：", min_value=1, max_value=4, value=PLAN_YEAR)
+            with up_col2:
+                up_week = st.number_input("選擇週數 (1~52)：", min_value=1, max_value=52, value=current_week_num)
+                
+            up_week_key = f"Y{up_year}-W{up_week:02d}"
+            
+            uploaded_img = st.file_uploader(f"請上傳【第 {up_year} 年 - 第 {up_week:02d} 週】進度對照表圖檔：", type=["png", "jpg", "jpeg"])
             
             if uploaded_img is not None:
                 if st.button("⬆️ 儲存並發布此進度表"):
@@ -384,19 +435,3 @@ with tab_admin:
                 save_members(updated_names)
                 st.success("🎉 會友名單更新成功！")
                 st.rerun()
-
-        # --- 子功能 4: 匯出資料備份 ---
-        with admin_sub_tab4:
-            st.markdown("### 📥 匯出與下載簽到資料")
-            st.write("點擊下方按鈕可直接下載完整的簽到 CSV 檔：")
-            
-            if not df_attendance.empty:
-                csv_data = df_attendance.to_csv(index=False, encoding="utf-8-sig")
-                st.download_button(
-                    label="⬇️ 下載簽到資料檔 (attendance_records.csv)",
-                    data=csv_data,
-                    file_name=f"Church_Attendance_Backup_{datetime.datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
-                )
-            else:
-                st.info("目前尚無資料可供下載。")
