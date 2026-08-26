@@ -89,7 +89,15 @@ if not os.path.exists(SCHEDULE_RECORD_FILE):
 
 def load_members():
     if os.path.exists(MEMBERS_FILE):
-        return pd.read_csv(MEMBERS_FILE)["name"].tolist()
+        try:
+            df = pd.read_csv(MEMBERS_FILE)
+            if "name" in df.columns:
+                return df["name"].dropna().tolist()
+            elif not df.empty:
+                # 若無 name 欄位，嘗試抓取第一欄
+                return df.iloc[:, 0].dropna().tolist()
+        except Exception:
+            pass
     return INITIAL_MEMBERS
 
 def save_members(members_list):
