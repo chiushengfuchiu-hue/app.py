@@ -6,7 +6,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# 1. 檔案與設定
+# 1. 檔案與基礎設定
 # ==========================================
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
@@ -29,23 +29,13 @@ INITIAL_MEMBERS = [
     "林雅音", "劉淑珠", "葉雅雲", "趙文川"
 ]
 
-TARGET_28_MEMBERS = [
-    "周寶燕", "曾笑", "黃然玉", "吳妃玉", "楊游美麗", 
-    "翁淑美", "石美莎", "單麗蘭", "鄭富美", 
-    "趙文崇", "李應昌", "林春妙", "邱文雀", 
-    "梁垠盤", "陳宜宏", "郭彩梅", "林春桃", "鳳姐", 
-    "黃敏生", "吳秀卉", "程乃珍", "蕭慧麗", 
-    "蔡慧俐", "林雅谷", "李俊修", "盧正亮", 
-    "劉淑珠", "葉雅雲"
-]
-
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
-# 2. 本地與雲端資料處理
+# 2. 資料庫與 API 處理邏輯
 # ==========================================
 def load_attendance():
-    """載入本地簽到紀錄，保證 0 延遲且不會被 1000 行限制卡住"""
+    """載入簽到紀錄"""
     if os.path.exists(ATTENDANCE_FILE):
         try:
             df = pd.read_csv(ATTENDANCE_FILE, dtype=str)
@@ -60,11 +50,11 @@ def load_attendance():
     return pd.DataFrame(columns=["week_key", "member_name", "timestamp"])
 
 def save_attendance(df):
-    """儲存簽到紀錄至本地 CSV"""
+    """儲存簽到紀錄至本地"""
     df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8-sig")
 
 def sync_to_gsheet_async(new_rows_list):
-    """背景同步寫入 Google Sheets（不影響前台速度）"""
+    """背景備份寫入 Google Sheets"""
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds_dict = dict(st.secrets["gcp_service_account"])
@@ -81,8 +71,8 @@ def sync_to_gsheet_async(new_rows_list):
         sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
         sheet = client.open(sheet_name).sheet1
         sheet.append_rows(new_rows_list)
-    except Exception as e:
-        pass # 即使雲端失敗，本地資料庫依然正常發揮
+    except Exception:
+        pass
 
 def add_single_record(week_key, member_name):
     """新增單筆簽到"""
@@ -91,7 +81,6 @@ def add_single_record(week_key, member_name):
     week_key = str(week_key).strip()
     member_name = str(member_name).strip()
     
-    # 避免重複
     match = df[(df["week_key"] == week_key) & (df["member_name"] == member_name)]
     if match.empty:
         new_row = pd.DataFrame([{"week_key": week_key, "member_name": member_name, "timestamp": now_str}])
@@ -100,48 +89,6 @@ def add_single_record(week_key, member_name):
         sync_to_gsheet_async([[week_key, member_name, now_str]])
     return True
 
-# ==========================================
-# CSS 樣式設定
-# ==========================================
-st.markdown("""
-    <style>
-    html, body { max-width: 100vw; overflow-x: hidden; }
-    h1 { font-size: clamp(22px, 6vw, 32px) !important; line-height: 1.3 !important; }
-    
-    div[data-testid="stButton"] button {
-        width: 100% !important;
-        white-space: normal !important;
-        word-break: break-word !important;
-    }
-    div[data-testid="stButton"] button p {
-        font-size: clamp(18px, 5vw, 26px) !important;
-        font-weight: 800 !important;
-    }
-    div[data-testid="stButton"] button[kind="secondary"] {
-        min-height: 3em !important;
-        padding: 8px 6px !important;
-        border-radius: 12px !important;
-        border: 2px solid #0284C7 !important;
-        background-color: #FFFFFF !important;
-        color: #0F172A !important;
-        margin-bottom: 8px !important;
-    }
-    div[data-testid="stButton"] button[kind="secondary"]:hover {
-        background-color: #E0F2FE !important;
-    }
-    div[data-testid="stButton"] button[kind="primary"] {
-        min-height: 3.2em !important;
-        border-radius: 12px !important;
-        background-color: #059669 !important;
-        margin-bottom: 8px !important;
-    }
-    div[data-testid="stButton"] button[kind="primary"] p { color: #FFFFFF !important; }
-    </style>
-""", unsafe_allow_html=True)
-
-# ==========================================
-# 3. 會友與進度資料處理
-# ==========================================
 def load_members():
     default_members = list(INITIAL_MEMBERS)
     for i in range(len(INITIAL_MEMBERS), 50):
@@ -198,7 +145,46 @@ def save_schedule_record(week_key, uploaded_file):
     df_s.to_csv(SCHEDULE_RECORD_FILE, index=False, encoding="utf-8-sig")
 
 # ==========================================
-# 4. 主程式頁面
+# 3. CSS 樣式美化
+# ==========================================
+st.markdown("""
+    <style>
+    html, body { max-width: 100vw; overflow-x: hidden; }
+    h1 { font-size: clamp(22px, 6vw, 32px) !important; line-height: 1.3 !important; }
+    
+    div[data-testid="stButton"] button {
+        width: 100% !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+    }
+    div[data-testid="stButton"] button p {
+        font-size: clamp(18px, 5vw, 26px) !important;
+        font-weight: 800 !important;
+    }
+    div[data-testid="stButton"] button[kind="secondary"] {
+        min-height: 3em !important;
+        padding: 8px 6px !important;
+        border-radius: 12px !important;
+        border: 2px solid #0284C7 !important;
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+        margin-bottom: 8px !important;
+    }
+    div[data-testid="stButton"] button[kind="secondary"]:hover {
+        background-color: #E0F2FE !important;
+    }
+    div[data-testid="stButton"] button[kind="primary"] {
+        min-height: 3.2em !important;
+        border-radius: 12px !important;
+        background-color: #059669 !important;
+        margin-bottom: 8px !important;
+    }
+    div[data-testid="stButton"] button[kind="primary"] p { color: #FFFFFF !important; }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 4. 主程式介面
 # ==========================================
 if "current_member" not in st.session_state:
     st.session_state.current_member = None
@@ -226,7 +212,7 @@ with tab_user:
     verse_info = get_weekly_verse(current_week_num)
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
 
-    # 顯示最新的進度表
+    # 顯示最新進度表
     latest_week_num = current_week_num
     if os.path.exists(SCHEDULE_RECORD_FILE):
         try:
@@ -248,7 +234,7 @@ with tab_user:
 
     st.divider()
 
-    # 名字列表
+    # 會友名字列表
     if st.session_state.current_member is None:
         chunk_size = 10
         total_members = len(member_list)
@@ -280,7 +266,7 @@ with tab_user:
                     st.session_state.current_member = name
                     st.rerun()
 
-    # 個人專屬補簽頁面
+    # 個人簽到/補簽頁
     else:
         member_name = st.session_state.current_member
         if st.button("⬅️ 返回名字列表", type="secondary", use_container_width=True):
@@ -303,7 +289,6 @@ with tab_user:
         st.divider()
         st.markdown("### 🟡 【補簽未完成進度】")
         
-        # 抓取該會友已簽到的週數
         signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist()
         
         missing_weeks_info = []
@@ -334,39 +319,84 @@ with tab_user:
             st.success("🎉 太棒了！過去每一週的進度皆已完成！")
 
 # ------------------------------------------
-# TAB 2: 後台與一鍵批次補簽
+# TAB 2: 完整後台管理功能 (已恢復)
 # ------------------------------------------
 with tab_admin:
-    st.subheader("🔒 管理者數據與功能管理")
+    st.subheader("🔒 管理者控制台")
     pwd = st.text_input("請輸入管理者密碼：", type="password")
     
     if pwd == ADMIN_PASSWORD:
-        st.success("身分驗證成功！")
+        st.success("🔓 驗證成功，歡迎進入後台管理系統！")
         
-        # 強大的一鍵批次初始化按鈕
-        st.markdown("---")
-        st.subheader("🚀 28 位會友一鍵批次補簽工具 (1~33週)")
-        st.write(f"點擊下方按鈕，系統將自動寫入 **28位會友 × 1~33週** 的簽到紀錄，**保證圖框瞬間消失**！")
+        admin_sub_tab1, admin_sub_tab2, admin_sub_tab3, admin_sub_tab4 = st.tabs([
+            "📊 簽到數據總覽", 
+            "🗓️ 上傳進度表圖片", 
+            "👥 會友名單編輯", 
+            "📥 匯出資料備份"
+        ])
         
-        if st.button("⚡ 點此立即完成 28 位會友 1~33 週批次補簽", type="primary"):
-            df_att = load_attendance()
-            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # --- 子功能 1: 簽到數據總覽 ---
+        with admin_sub_tab1:
+            st.markdown("### 📊 簽到數據統計")
+            total_records = len(df_attendance)
+            unique_members = df_attendance["member_name"].nunique() if not df_attendance.empty else 0
             
-            # 建立比對 Set
-            existing_set = set(zip(df_att["week_key"], df_att["member_name"]))
+            c1, c2 = st.columns(2)
+            c1.metric("目前總簽到人次", f"{total_records} 次")
+            c2.metric("已有簽到紀錄會友數", f"{unique_members} 人")
             
-            new_records = []
-            for m in TARGET_28_MEMBERS:
-                for w in range(1, 34):
-                    w_key = f"Y{PLAN_YEAR}-W{w:02d}"
-                    if (w_key, m) not in existing_set:
-                        new_records.append({"week_key": w_key, "member_name": m, "timestamp": now_str})
-            
-            if new_records:
-                new_df = pd.DataFrame(new_records)
-                df_att = pd.concat([df_att, new_df], ignore_index=True)
-                save_attendance(df_att)
-                st.success(f"🎉 成功寫入 {len(new_records)} 筆紀錄！過去 1~33 週補簽圖框已全數消失！")
-                st.rerun()
+            st.divider()
+            st.markdown("#### 🔍 簽到紀錄明細表")
+            if not df_attendance.empty:
+                st.dataframe(df_attendance.sort_values(by="timestamp", ascending=False), use_container_width=True)
             else:
-                st.info("💡 1~33 週的紀錄先前已經存在，補簽圖框已清空！")
+                st.info("尚無任何簽到紀錄。")
+
+        # --- 子功能 2: 上傳進度表圖片 ---
+        with admin_sub_tab2:
+            st.markdown("### 🗓️ 上傳/更換每週進度表圖片")
+            target_week = st.number_input("選擇週數 (1~52)：", min_value=1, max_value=52, value=current_week_num)
+            up_week_key = f"Y{PLAN_YEAR}-W{target_week:02d}"
+            
+            uploaded_img = st.file_uploader(f"請上傳【第 {PLAN_YEAR} 年 - 第 {target_week:02d} 週】進度對照表圖檔：", type=["png", "jpg", "jpeg"])
+            
+            if uploaded_img is not None:
+                if st.button("⬆️ 儲存並發布此進度表"):
+                    save_schedule_record(up_week_key, uploaded_img)
+                    st.success(f"🎉【{up_week_key}】進度表圖片已成功更新！")
+                    st.rerun()
+            
+            cur_img = get_schedule_image_path(up_week_key)
+            if cur_img:
+                st.markdown(f"**目前【{up_week_key}】使用的圖片：**")
+                st.image(cur_img, width=400)
+
+        # --- 子功能 3: 會友名單編輯 ---
+        with admin_sub_tab3:
+            st.markdown("### 👥 管理會友名單")
+            st.write("可在下方文字框中新增或修改會友姓名（每行一位）：")
+            
+            current_m_text = "\n".join(member_list)
+            new_m_text = st.text_area("會友名單列表：", value=current_m_text, height=300)
+            
+            if st.button("💾 儲存名單變更"):
+                updated_names = [name.strip() for name in new_m_text.split("\n") if name.strip()]
+                save_members(updated_names)
+                st.success("🎉 會友名單更新成功！")
+                st.rerun()
+
+        # --- 子功能 4: 匯出資料備份 ---
+        with admin_sub_tab4:
+            st.markdown("### 📥 匯出與下載簽到資料")
+            st.write("點擊下方按鈕可直接下載完整的簽到 CSV 檔：")
+            
+            if not df_attendance.empty:
+                csv_data = df_attendance.to_csv(index=False, encoding="utf-8-sig")
+                st.download_button(
+                    label="⬇️ 下載簽到資料檔 (attendance_records.csv)",
+                    data=csv_data,
+                    file_name=f"Church_Attendance_Backup_{datetime.datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.info("目前尚無資料可供下載。")
