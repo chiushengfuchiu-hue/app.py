@@ -13,7 +13,7 @@ VERSES_FILE = "verses.csv"
 SCHEDULE_RECORD_FILE = "schedule_records.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
 SCHEDULE_DIR = "schedules_img"
-ADMIN_PASSWORD = "11190928n"
+ADMIN_PASSWORD = "11190928"
 
 PLAN_YEAR = 2 
 
