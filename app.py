@@ -13,7 +13,7 @@ VERSES_FILE = "verses.csv"
 SCHEDULE_RECORD_FILE = "schedule_records.csv"
 ATTENDANCE_FILE = "attendance_records.csv"  # 本地簽到資料庫
 SCHEDULE_DIR = "schedules_img"
-ADMIN_PASSWORD = "church_admin"
+ADMIN_PASSWORD = "610113"
 
 PLAN_YEAR = 2 
 
