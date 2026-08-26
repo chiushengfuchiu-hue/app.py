@@ -17,10 +17,8 @@ ADMIN_PASSWORD = "church_admin"                 # 後台密碼
 # 4年讀經計畫設定：今年為第 2 年
 PLAN_YEAR = 2 
 
-# 確保圖片儲存資料夾存在
 os.makedirs(SCHEDULE_DIR, exist_ok=True)
 
-# 圖片辨識出的 34 位真實名單底稿
 INITIAL_MEMBERS = [
     "周寶燕", "曾笑", "黃然玉", "吳妃玉", "楊游美麗", 
     "翁淑美", "石美莎", "單麗蘭", "鄭富美", "李鶯芳", 
@@ -34,7 +32,7 @@ INITIAL_MEMBERS = [
 st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
-# Google Sheets 串接與讀寫 (雲端資料庫)
+# Google Sheets 快取與串接優化
 # ==========================================
 @st.cache_resource
 def get_gsheet_client():
@@ -55,45 +53,50 @@ def get_gsheet_client():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     return gspread.authorize(creds)
 
+# 加上 ttl 快取 5 秒，提昇連線與載入速度
+@st.cache_data(ttl=5)
 def load_attendance():
-    """從 Google Sheets 讀取簽到紀錄"""
+    """從 Google Sheets 讀取簽到紀錄（快取加速）"""
     try:
         client = get_gsheet_client()
         sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
         sheet = client.open(sheet_name).sheet1
         records = sheet.get_all_records()
         df = pd.DataFrame(records)
-        # 確保必要欄位存在
+        
+        # 確保欄位存在並去除字串前後空格，防止比對失敗
         for col in ["week_key", "member_name", "timestamp"]:
             if col not in df.columns:
-                df[col] = None
+                df[col] = ""
+            else:
+                df[col] = df[col].astype(str).str.strip()
         return df
     except Exception as e:
         return pd.DataFrame(columns=["week_key", "member_name", "timestamp"])
 
 def save_record(week_key, member_name):
-    """寫入簽到紀錄至 Google Sheets"""
+    """寫入簽到紀錄至 Google Sheets 並清空快取"""
     try:
         client = get_gsheet_client()
         sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
         sheet = client.open(sheet_name).sheet1
         timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # 檢查是否重複簽到
-        df = load_attendance()
-        if not df.empty:
-            mask = (df["week_key"] == week_key) & (df["member_name"] == member_name)
-            if mask.any():
-                return False
+        week_key = str(week_key).strip()
+        member_name = str(member_name).strip()
 
+        # 寫入雲端
         sheet.append_row([week_key, member_name, timestamp_str])
+        
+        # 清除快取，讓前台下一秒立刻讀到最新資料
+        st.cache_data.clear()
         return True
     except Exception as e:
         st.error(f"雲端寫入失敗: {e}")
         return False
 
 # ==========================================
-# CSS 響應式與字體自適應修正
+# CSS 響應式與字體自適應
 # ==========================================
 st.markdown("""
     <style>
@@ -201,7 +204,7 @@ def load_members():
         try:
             df_m = pd.read_csv(MEMBERS_FILE)
             col_name = "member_name" if "member_name" in df_m.columns else df_m.columns[0]
-            current_names = df_m[col_name].dropna().tolist() if not df_m.empty else []
+            current_names = df_m[col_name].dropna().astype(str).str.strip().tolist() if not df_m.empty else []
             if "會友 01" in current_names or len(current_names) < 34:
                 need_reset = True
             else:
@@ -238,7 +241,6 @@ def get_weekly_verse(week_num):
             pass
     return fallback
 
-# 進度圖管理相關函式
 def get_schedule_image_path(week_key):
     if os.path.exists(SCHEDULE_RECORD_FILE):
         try:
@@ -273,14 +275,14 @@ def save_schedule_record(week_key, uploaded_file):
     df_s.to_csv(SCHEDULE_RECORD_FILE, index=False, encoding="utf-8-sig")
 
 # ==========================================
-# 3. Session State 狀態初始化 (週日為一週開始)
+# 3. Session State 狀態初始化
 # ==========================================
 if "current_member" not in st.session_state:
     st.session_state.current_member = None
 
 now = datetime.datetime.now()
 
-# 調整週日為一週第一天：如果是週日(weekday==6)，週數加 1
+# 週日為一週第一天
 is_sunday = (now.weekday() == 6)
 calc_date = now + datetime.timedelta(days=1) if is_sunday else now
 current_week_num = calc_date.isocalendar()[1]
@@ -297,14 +299,12 @@ st.title(f"📖 教會讀經簽到（{current_week_display}）")
 tab_user, tab_admin = st.tabs(["✍️ 會友簽到專區", "🔒 後台統計與管理"])
 
 # ------------------------------------------
-# TAB 1: 前台 - 手機滿框大字簽到與進度圖展示
+# TAB 1: 前台
 # ------------------------------------------
 with tab_user:
-    # 1. 本週經文
     verse_info = get_weekly_verse(current_week_num)
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**")
 
-    # 計算已上傳的最新週數
     latest_week_num = current_week_num
     if os.path.exists(SCHEDULE_RECORD_FILE):
         try:
@@ -319,7 +319,6 @@ with tab_user:
     latest_week_key = f"Y{PLAN_YEAR}-W{latest_week_num:02d}"
     latest_week_label = f"第 {PLAN_YEAR} 年 - 第 {latest_week_num:02d} 週"
 
-    # 2. 中間：查詢過往進度表 (折疊選單)
     with st.expander("🔍 點此查詢【過往歷史進度表】", expanded=False):
         all_weeks_options = [f"Y{PLAN_YEAR}-W{w:02d} (第 {w} 週)" for w in range(1, 53)]
         selected_hist_str = st.selectbox("請選擇要查詢的過往週別：", all_weeks_options, index=max(0, latest_week_num-2))
@@ -332,7 +331,6 @@ with tab_user:
         else:
             st.warning(f"📌 未找到【{selected_hist_str}】的歷史圖檔。")
 
-    # 3. 下方：直接呈現【最新進度表】
     st.markdown(f"#### 🗓️ 最新進度表（{latest_week_label}）")
     latest_img_path = get_schedule_image_path(latest_week_key)
     if latest_img_path:
@@ -342,9 +340,7 @@ with tab_user:
 
     st.divider()
 
-    # ----------------------------------------------------
-    # 第一層：名字點選圖框選單
-    # ----------------------------------------------------
+    # 名字列表選擇
     if st.session_state.current_member is None:
         st.markdown(f"**當前簽到進度：`{current_week_display}`**")
         
@@ -402,9 +398,7 @@ with tab_user:
                         st.session_state.current_member = name
                         st.rerun()
 
-    # ----------------------------------------------------
-    # 第二層：個人專屬頁面
-    # ----------------------------------------------------
+    # 個人專屬頁面
     else:
         member_name = st.session_state.current_member
         
@@ -415,15 +409,17 @@ with tab_user:
         st.markdown(f"## 👤 {member_name} 的讀經專頁")
         
         st.markdown(f"### 📍 【本週進度】{current_week_display}")
+        
+        # 精確比對簽到紀錄
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
         
         if is_signed:
             st.success(f"🎉 **{member_name}**，您本週已經完成簽到！")
         else:
             if st.button(f"🟢 完成【{current_week_display}】簽到", type="primary", use_container_width=True):
-                save_record(current_week_key, member_name)
-                st.toast(f"🎉 簽到成功！願神祝福您！")
-                st.rerun()
+                if save_record(current_week_key, member_name):
+                    st.toast(f"🎉 簽到成功！願神祝福您！")
+                    st.rerun()
                 
         st.divider()
         
@@ -461,7 +457,7 @@ with tab_user:
             st.success("🎉 太棒了！過去每一週的進度皆已完成！")
 
 # ------------------------------------------
-# TAB 2: 後台 - 資料管理與進度圖上傳
+# TAB 2: 後台
 # ------------------------------------------
 with tab_admin:
     st.subheader("🔒 管理者數據與功能管理")
@@ -477,7 +473,6 @@ with tab_admin:
             "⚡ 手動代簽"
         ])
         
-        # 1. 統計報表
         with sub1:
             st.markdown(f"### 🔍 第 {PLAN_YEAR} 年彈性時間區間讀經統計")
             filter_mode = st.selectbox("請選擇查詢時間基準：", [
@@ -524,7 +519,6 @@ with tab_admin:
             else:
                 st.info("尚無簽到紀錄。")
 
-        # 2. 上傳/更新進度圖表 (預設帶入下週)
         with sub2:
             st.markdown("### 🖼️ 上傳每週讀經進度表圖片")
             st.info("💡 每週五提前上傳時，系統預設已為您帶入【下週進度】。")
@@ -541,7 +535,6 @@ with tab_admin:
                     save_schedule_record(target_upload_key, uploaded_schedule_file)
                     st.success(f"🎉 成功發布第 {upload_week_num} 週進度表！會友現在即可在前台查看。")
 
-        # 3. 名單管理
         with sub3:
             st.markdown("### ✏️ 修改會友姓名 (舊名換新名)")
             c1, c2 = st.columns(2)
@@ -577,7 +570,6 @@ with tab_admin:
                 st.success(f"已從名單中移除 {del_target}")
                 st.rerun()
 
-        # 4. 手動代簽
         with sub4:
             st.markdown("### ⚡ 管理者指定補簽")
             c1, c2 = st.columns(2)
