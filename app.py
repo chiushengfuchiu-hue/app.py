@@ -2,7 +2,44 @@ import streamlit as st
 import pandas as pd
 import datetime
 import os
+import gspread
+from google.oauth2.service_account import Credentials
 
+# =========================================================
+# Google Sheets 串接設定
+# =========================================================
+@st.cache_resource
+def get_gsheet_client():
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    creds_info = st.secrets["gcp_service_account"]
+    creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+    return gspread.authorize(creds)
+
+def load_attendance():
+    """從 Google 試算表讀取所有簽到紀錄"""
+    try:
+        client = get_gsheet_client()
+        sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+        sheet = client.open(sheet_name).sheet1
+        data = sheet.get_all_records()
+        return pd.DataFrame(data)
+    except Exception as e:
+        return pd.DataFrame(columns=["name", "week", "date", "status", "note"])
+
+def save_attendance(name, week, date_str, status="已簽到", note=""):
+    """寫入一筆簽到紀錄至 Google 試算表"""
+    try:
+        client = get_gsheet_client()
+        sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+        sheet = client.open(sheet_name).sheet1
+        sheet.append_row([name, week, date_str, status, note])
+        return True
+    except Exception as e:
+        st.error(f"寫入 Google 試算表失敗: {e}")
+        return False
 # ==========================================
 # 1. 檔案與預設設定
 # ==========================================
