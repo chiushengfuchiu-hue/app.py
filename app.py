@@ -393,15 +393,16 @@ with tab_admin:
 
             st.dataframe(df_pivot_filtered, use_container_width=True, height=400)
             
-            csv_data = df_pivot_filtered.to_csv(index=False, encoding="utf-8-sig")
+            # 將資料轉為帶有 BOM 的 UTF-8 位元組，確保 Excel 開啟絕不亂碼
+            csv_bytes = df_pivot_filtered.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+            
             st.download_button(
                 label=f"📥 下載【{time_range}】簽到統計 Excel 報表 (CSV)",
-                data=csv_data,
+                data=csv_bytes,
                 file_name=f"Church_Attendance_{time_range}_{datetime.datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
                 type="primary"
             )
-
             # --- 🛠️ 誤簽撤銷區塊 ---
             st.divider()
             st.markdown("#### 🛠️ 誤簽撤銷 / 刪除紀錄區")
