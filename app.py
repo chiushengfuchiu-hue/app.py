@@ -607,37 +607,37 @@ with tab_admin:
             st.write(f"預計處理人數：**{len(target_members)}** 人，每人補簽：**第 1~33 週**（共 {len(target_members) * 33} 筆紀錄）")
             
             if st.button("⚡ 確定執行批次補簽 (1~33週)"):
-            with st.spinner("⏳ 正在寫入 Google Sheets 雲端資料庫，請稍候..."):
-                try:
-                    client = get_gsheet_client()
-                    sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
-                    sheet = client.open(sheet_name).sheet1
-                    
-                    # 抓取雲端現有紀錄
-                    existing_records = sheet.get_all_records()
-                    existing_set = {(str(r.get("week_key")).strip(), str(r.get("member_name")).strip()) for r in existing_records}
-                    
-                    new_rows = []
-                    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    for member in target_members:
-                        for w in range(1, 34):
-                            w_key = f"Y{PLAN_YEAR}-W{w:02d}"
-                            if (w_key, member) not in existing_set:
-                                new_rows.append([w_key, member, now_str])
-                    
-                    if new_rows:
-                        sheet.append_rows(new_rows)
+                with st.spinner("⏳ 正在寫入 Google Sheets 雲端資料庫，請稍候..."):
+                    try:
+                        client = get_gsheet_client()
+                        sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+                        sheet = client.open(sheet_name).sheet1
                         
-                        # 關鍵：強制重新從雲端載入最新資料並寫入 Session State
-                        st.session_state.attendance_data = fetch_attendance_from_cloud()
-                        st.success(f"🎉 成功補簽 {len(new_rows)} 筆紀錄！")
-                        st.rerun()
-                    else:
-                        # 若先前已寫入過，點擊此按鈕也會強制重新同步雲端
-                        st.session_state.attendance_data = fetch_attendance_from_cloud()
-                        st.info("💡 資料已同步！1~33 週的紀錄皆已完成。")
-                        st.rerun()
+                        # 抓取雲端現有紀錄
+                        existing_records = sheet.get_all_records()
+                        existing_set = {(str(r.get("week_key")).strip(), str(r.get("member_name")).strip()) for r in existing_records}
                         
-                except Exception as e:
-                    st.error(f"❌ 批次寫入失敗：{e}")
+                        new_rows = []
+                        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        for member in target_members:
+                            for w in range(1, 34):
+                                w_key = f"Y{PLAN_YEAR}-W{w:02d}"
+                                if (w_key, member) not in existing_set:
+                                    new_rows.append([w_key, member, now_str])
+                        
+                        if new_rows:
+                            sheet.append_rows(new_rows)
+                            
+                            # 關鍵：強制重新從雲端載入最新資料並寫入 Session State
+                            st.session_state.attendance_data = fetch_attendance_from_cloud()
+                            st.success(f"🎉 成功補簽 {len(new_rows)} 筆紀錄！")
+                            st.rerun()
+                        else:
+                            # 若先前已寫入過，點擊此按鈕也會強制重新同步雲端
+                            st.session_state.attendance_data = fetch_attendance_from_cloud()
+                            st.info("💡 資料已同步！1~33 週的紀錄皆已完成。")
+                            st.rerun()
+                            
+                    except Exception as e:
+                        st.error(f"❌ 批次寫入失敗：{e}")
