@@ -53,7 +53,6 @@ def save_attendance(df):
     df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8-sig")
 
 def delete_single_record(week_key, member_name):
-    """【新增】撤銷/刪除特定會友某週的簽到紀錄"""
     df = load_attendance()
     week_key = str(week_key).strip()
     member_name = str(member_name).strip()
@@ -97,7 +96,6 @@ def add_single_record(week_key, member_name):
     return True
 
 def load_members():
-    """修正：優先讀取檔案，防止後台新增/修改的會友資料被還原"""
     if os.path.exists(MEMBERS_FILE):
         try:
             df_m = pd.read_csv(MEMBERS_FILE, encoding="utf-8-sig")
@@ -128,7 +126,7 @@ def get_weekly_verse(week_num):
                 return {
                     "verse": str(row["verse"]), 
                     "ref": str(row["ref"]),
-                    "encouragement": str(row.get("encouragement", "")) # 抓取 encouragement 欄位
+                    "encouragement": str(row.get("encouragement", ""))
                 }
         except Exception:
             pass
@@ -154,6 +152,34 @@ def save_schedule_record(week_key, uploaded_file):
     df_s = df_s[df_s["week_key"] != week_key]
     df_s = pd.concat([df_s, pd.DataFrame([{"week_key": week_key, "image_path": file_path}])], ignore_index=True)
     df_s.to_csv(SCHEDULE_RECORD_FILE, index=False, encoding="utf-8-sig")
+
+def get_latest_uploaded_week_key():
+    """關鍵：自動計算目前最新成功上傳圖檔的 week_key 與 week_num"""
+    if os.path.exists(SCHEDULE_RECORD_FILE):
+        try:
+            df_s = pd.read_csv(SCHEDULE_RECORD_FILE)
+            valid_weeks = []
+            for _, row in df_s.iterrows():
+                if os.path.exists(str(row["image_path"])):
+                    w_key = str(row["week_key"]).strip()
+                    if w_key.startswith(f"Y{PLAN_YEAR}-W"):
+                        try:
+                            w_num = int(w_key.split("-W")[1])
+                            valid_weeks.append(w_num)
+                        except Exception:
+                            pass
+            if valid_weeks:
+                max_w = max(valid_weeks)
+                return f"Y{PLAN_YEAR}-W{max_w:02d}", max_w
+        except Exception:
+            pass
+            
+    # 預設備用機制：若尚無任何圖片紀錄，退回當前日曆週別
+    now = datetime.datetime.now()
+    is_sunday = (now.weekday() == 6)
+    calc_date = now + datetime.timedelta(days=1) if is_sunday else now
+    current_week_num = calc_date.isocalendar()[1]
+    return f"Y{PLAN_YEAR}-W{current_week_num:02d}", current_week_num
 
 def generate_pivot_report(target_year, max_week):
     df_att = load_attendance()
@@ -227,12 +253,8 @@ st.markdown("""
 if "current_member" not in st.session_state:
     st.session_state.current_member = None
 
-now = datetime.datetime.now()
-is_sunday = (now.weekday() == 6)
-calc_date = now + datetime.timedelta(days=1) if is_sunday else now
-current_week_num = calc_date.isocalendar()[1]
-
-current_week_key = f"Y{PLAN_YEAR}-W{current_week_num:02d}"
+# 【核心變更】系統預設週別由「最新上傳的進度圖檔」判定，完全不隨時間強行切換
+current_week_key, current_week_num = get_latest_uploaded_week_key()
 current_week_display = f"第 {PLAN_YEAR} 年 - 第 {current_week_num:02d} 週"
 
 df_members = load_members()
@@ -248,8 +270,6 @@ tab_user, tab_admin = st.tabs(["✍️ 會友簽到專區", "🔒 後台統計�
 # ------------------------------------------
 with tab_user:
     verse_info = get_weekly_verse(current_week_num)
-    
-    # 組合顯示內容：含經文、出處與鼓勵的話
     enc_text = f"\n\n💬 **心靈補給**：{verse_info['encouragement']}" if verse_info.get('encouragement') else ""
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**{enc_text}")
 
@@ -287,7 +307,7 @@ with tab_user:
         start_idx = selected_page_idx * chunk_size
         current_page_members = member_list[start_idx:min(start_idx + chunk_size, total_members)]
         
-        st.write("👇 **請點選您的名字圖框：**")
+        st.write(f"👇 **請點選您的名字圖框（目前顯示【第 {current_week_num:02d} 週】簽到狀態）：**")
         mid = (len(current_page_members) + 1) // 2
         col1, col2 = st.columns(2)
         
@@ -374,7 +394,6 @@ with tab_admin:
             "👥 會友名單編輯"
         ])
         
-        # --- 子功能 1: 簽到總覽、四大季度匯出與誤簽撤銷 ---
         with admin_sub_tab1:
             st.markdown("### 📊 全會友讀經簽到進度總表")
             
@@ -404,7 +423,6 @@ with tab_admin:
 
             st.dataframe(df_pivot_filtered, use_container_width=True, height=400)
             
-            # 將資料轉為帶有 BOM 的 UTF-8 位元組，確保 Excel 開啟絕不亂碼
             csv_bytes = df_pivot_filtered.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
             
             st.download_button(
@@ -414,7 +432,7 @@ with tab_admin:
                 mime="text/csv",
                 type="primary"
             )
-            # --- 🛠️ 誤簽撤銷區塊 ---
+            
             st.divider()
             st.markdown("#### 🛠️ 誤簽撤銷 / 刪除紀錄區")
             col_del1, col_del2, col_del3 = st.columns([2, 2, 1])
@@ -432,7 +450,6 @@ with tab_admin:
                     st.toast(f"已成功刪除 {del_member} 在【{del_week_key}】的紀錄！")
                     st.rerun()
 
-        # --- 子功能 2: 跨年份上傳進度表圖片 ---
         with admin_sub_tab2:
             st.markdown("### 🗓️ 上傳/更換進度表圖片（含歷史年份）")
             
@@ -440,7 +457,9 @@ with tab_admin:
             with up_col1:
                 up_year = st.number_input("選擇年份 (如: 1代表第1年, 2代表第2年)：", min_value=1, max_value=4, value=PLAN_YEAR)
             with up_col2:
-                up_week = st.number_input("選擇週數 (1~52)：", min_value=1, max_value=52, value=current_week_num)
+                # 預設建議上傳下一個週數 (current_week_num + 1)
+                default_up_week = min(52, current_week_num + 1)
+                up_week = st.number_input("選擇週數 (1~52)：", min_value=1, max_value=52, value=default_up_week)
                 
             up_week_key = f"Y{up_year}-W{up_week:02d}"
             
@@ -449,7 +468,7 @@ with tab_admin:
             if uploaded_img is not None:
                 if st.button("⬆️ 儲存並發布此進度表"):
                     save_schedule_record(up_week_key, uploaded_img)
-                    st.success(f"🎉【{up_week_key}】進度表圖片已成功更新！")
+                    st.success(f"🎉【{up_week_key}】進度表圖片已成功上傳！系統已自動同步重置為【第 {up_week:02d} 週】簽到頁面！")
                     st.rerun()
             
             cur_img = get_schedule_image_path(up_week_key)
@@ -457,7 +476,6 @@ with tab_admin:
                 st.markdown(f"**目前【{up_week_key}】使用的圖片：**")
                 st.image(cur_img, width=400)
 
-        # --- 子功能 3: 會友名單編輯 ---
         with admin_sub_tab3:
             st.markdown("### 👥 管理會友名單")
             st.write("可在下方文字框中新增或修改會友姓名（每行一位）：")
