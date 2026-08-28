@@ -321,6 +321,8 @@ import streamlit.components.v1 as components
 
 import streamlit.components.v1 as components
 
+import streamlit.components.v1 as components
+
 # ------------------------------------------
 # TAB 1: 會友簽到區
 # ------------------------------------------
@@ -338,7 +340,6 @@ with tab_user:
     # 初始化 Session State
     if "scroll_target" not in st.session_state:
         st.session_state.scroll_target = None
-    # 初始值為 None：代表 4 組名字圖框預設全部收合
     if "open_section" not in st.session_state:
         st.session_state.open_section = None
 
@@ -353,7 +354,7 @@ with tab_user:
                     if (el) {{
                         el.scrollIntoView({{behavior: 'smooth', block: 'start'}});
                     }}
-                }}, 120);
+                }}, 150);
             </script>
             """,
             height=0,
@@ -383,24 +384,24 @@ with tab_user:
                 names_text = "、".join(chunk)
                 is_this_open = (st.session_state.open_section == page_num)
                 
-                # 分區標題圖框：顯示展開/收合圖示
+                # 分區標題圖框
                 toggle_icon = "🔽" if is_this_open else "▶️"
                 header_label = f"{toggle_icon} 📦 【第 {page_num} 區】 {names_text}"
                 
-                # 點擊分區標題按鈕：進行切換與單一展開控制
                 if st.button(header_label, key=f"sec_toggle_{page_num}", type="secondary", use_container_width=True):
                     if is_this_open:
-                        st.session_state.open_section = None  # 再次點擊原本展開的區，則全部收合
+                        st.session_state.open_section = None
                     else:
-                        st.session_state.open_section = page_num  # 開啟新區，舊區自動縮起來
-                        # 設定錨點定位至「標題圖框與第一位姓名中間」
-                        st.session_state.scroll_target = f"sec-header-middle-{page_num}"
+                        st.session_state.open_section = page_num
+                        # 點擊該區時，將錨點設在該區內部的分割線
+                        st.session_state.scroll_target = f"line-anchor-{page_num}"
                     st.rerun()
 
-                # 當該分區被點開時，才渲染裡面的姓名按鈕
+                # 當該分區被點開時，顯示分割線與名字按鈕
                 if is_this_open:
-                    # 📍 關鍵錨點：精準放置於【標題圖框】與【第一位姓名】之間
-                    st.markdown(f"<div id='sec-header-middle-{page_num}' style='margin-top: -10px; margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+                    # 📍 錨點標籤 + 實線：正好介於標題圖框與第一個名字之間
+                    st.markdown(f"<div id='line-anchor-{page_num}'></div>", unsafe_allow_html=True)
+                    st.divider()
                     
                     col1, col2 = st.columns(2)
                     mid = (len(chunk) + 1) // 2
@@ -429,13 +430,12 @@ with tab_user:
     else:
         member_name = st.session_state.current_member
         
-        # 返回按鈕
         if st.button("⬅️ 返回選擇名字列表", type="secondary", use_container_width=True):
             st.session_state.current_member = None
-            # 返回時自動自動對焦回剛才點開的那一區（標題與姓名中間）
             current_sec = st.session_state.open_section
             if current_sec:
-                st.session_state.scroll_target = f"sec-header-middle-{current_sec}"
+                # 返回時精準對焦回剛剛那區名字上方的實線
+                st.session_state.scroll_target = f"line-anchor-{current_sec}"
             else:
                 st.session_state.scroll_target = "members-list-top"
             st.rerun()
