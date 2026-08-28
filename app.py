@@ -297,21 +297,28 @@ with tab_user:
     st.divider()
 
 # ------------------------------------------
-    # 【會友名字選擇區 - 前3區固定10人 / 第4區動態自動更新】
+    # 【會友名字選擇區 - 全動態分區，無名單不顯示】
     # ------------------------------------------
     if st.session_state.current_member is None:
         st.markdown("#### 👇 請點擊包含您名字的圖框：")
         
-        # 1. 前 30 位會友（第 1~3 區，每區固定 10 人）
+        # 過濾掉空白名稱與「會友 XX」等占位測試字串
+        valid_members = [
+            m for m in member_list 
+            if m and str(m).strip() and not str(m).startswith("會友")
+        ]
+        
         chunk_size = 10
-        fixed_chunks = []
-        for i in range(0, min(30, len(member_list)), chunk_size):
-            fixed_chunks.append(member_list[i:i + chunk_size])
+        total_valid = len(valid_members)
+        
+        # 每 10 人自動切為一個圖框，有多少人就生成多少個圖框
+        for i in range(0, total_valid, chunk_size):
+            chunk = valid_members[i:i + chunk_size]
+            page_num = (i // chunk_size) + 1
             
-        for idx, chunk in enumerate(fixed_chunks, start=1):
             if chunk:
                 names_text = "、".join(chunk)
-                expander_title = f"📦 【第 {idx} 區】 {names_text}"
+                expander_title = f"📦 【第 {page_num} 區】 {names_text}"
                 
                 with st.expander(expander_title, expanded=False):
                     col1, col2 = st.columns(2)
@@ -321,7 +328,7 @@ with tab_user:
                         for name in chunk[:mid]:
                             is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
                             status_icon = "✅" if is_signed else "👤"
-                            if st.button(f"{status_icon} {name}", key=f"btn_chunk_{idx}_{name}", type="secondary", use_container_width=True):
+                            if st.button(f"{status_icon} {name}", key=f"btn_dynamic_{page_num}_{name}", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
                                 st.rerun()
 
@@ -329,10 +336,9 @@ with tab_user:
                         for name in chunk[mid:]:
                             is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
                             status_icon = "✅" if is_signed else "👤"
-                            if st.button(f"{status_icon} {name}", key=f"btn_chunk_{idx}_{name}", type="secondary", use_container_width=True):
+                            if st.button(f"{status_icon} {name}", key=f"btn_dynamic_{page_num}_{name}", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
                                 st.rerun()
-
         # 2. 第 31 位及之後的會友（第 4 區動態伸縮區）
         dynamic_members = member_list[30:]
         if dynamic_members:
