@@ -234,7 +234,7 @@ st.markdown("""
     
     /* 內文文字放大加粗 */
     button[data-baseweb="tab"] p {
-        font-size: clamp(20px, 5vw, 24px) !important;
+        font-size: clamp(20px, 5vw, 26px) !important;
         font-weight: 800 !important;
         line-height: 1.2 !important;
     }
