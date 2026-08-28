@@ -317,6 +317,8 @@ tab_user, tab_history, tab_admin = st.tabs([
 
 import streamlit.components.v1 as components
 
+import streamlit.components.v1 as components
+
 # ------------------------------------------
 # TAB 1: 會友簽到區
 # ------------------------------------------
@@ -327,30 +329,36 @@ with tab_user:
     else:
         st.info(f"📌 目前為【{current_week_display}】簽到。")
 
+    # 1. 錨點放置：專頁橫線上方錨點 (對應圖片二)
+    st.markdown("<div id='divider-top-anchor'></div>", unsafe_allow_html=True)
     st.divider()
 
-    # 初始化滾動錨點與手風琴展開狀態
+    # 初始化滾動錨點與當前開啟的分區編號 (預設開啟第 1 區)
     if "scroll_target" not in st.session_state:
         st.session_state.scroll_target = None
-    if "expanded_page" not in st.session_state:
-        st.session_state.expanded_page = None
+    if "open_section" not in st.session_state:
+        st.session_state.open_section = 1
 
-    # 若有設定滾動目標，觸發 JavaScript 自動定位 (捲動至視野頂端)
+    # 若有設定滾動目標，觸發 JavaScript 自動精準定位
     if st.session_state.scroll_target:
         target_id = st.session_state.scroll_target
         components.html(
             f"""
             <script>
-                window.parent.document.getElementById('{target_id}')?.scrollIntoView({{behavior: 'smooth', block: 'start'}});
+                setTimeout(function() {{
+                    var el = window.parent.document.getElementById('{target_id}');
+                    if (el) {{
+                        el.scrollIntoView({{behavior: 'smooth', block: 'start'}});
+                    }}
+                }}, 100);
             </script>
             """,
             height=0,
         )
-        # 觸發一次定位後清空，避免影響後續操作
         st.session_state.scroll_target = None
 
     # --------------------------------------
-    # 情況 A：未選擇會友（顯示分區手風琴選單）
+    # 情況 A：未選擇會友（單一分區展開選單）
     # --------------------------------------
     if st.session_state.current_member is None:
         st.markdown("<div id='members-list-top'></div>", unsafe_allow_html=True)
@@ -370,14 +378,12 @@ with tab_user:
             
             if chunk:
                 names_text = "、".join(chunk)
-                expander_title = f"📦 【第 {page_num} 區】 {names_text}"
                 
-                # 在該分區上方放置 HTML 錨點
-                st.markdown(f"<div id='section-anchor-{page_num}'></div>", unsafe_allow_html=True)
+                # 判斷目前這區是否為唯一展開區
+                is_open = (st.session_state.open_section == page_num)
                 
-                is_open = (st.session_state.expanded_page == page_num)
-                
-                with st.expander(expander_title, expanded=is_open):
+                # 使用 expander 並給予動態 key，確保一次只會有一個展開
+                with st.expander(f"📦 【第 {page_num} 區】 {names_text}", expanded=is_open):
                     col1, col2 = st.columns(2)
                     mid = (len(chunk) + 1) // 2
                     
@@ -387,7 +393,9 @@ with tab_user:
                             status_icon = "✅" if is_signed else "👤"
                             if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
-                                st.session_state.scroll_target = "member-profile-top" # 設定進入個人頁後定位到最頂端
+                                st.session_state.open_section = page_num # 記錄當前區塊
+                                # 設定錨點定位至橫線上方
+                                st.session_state.scroll_target = "divider-top-anchor"
                                 st.rerun()
 
                     with col2:
@@ -396,8 +404,13 @@ with tab_user:
                             status_icon = "✅" if is_signed else "👤"
                             if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
-                                st.session_state.scroll_target = "member-profile-top" # 設定進入個人頁後定位到最頂端
+                                st.session_state.open_section = page_num # 記錄當前區塊
+                                # 設定錨點定位至橫線上方
+                                st.session_state.scroll_target = "divider-top-anchor"
                                 st.rerun()
+
+                # 2. 錨點放置：每一區圖框下方（用於查看個人名字時不需上下滑動）
+                st.markdown(f"<div id='section-bottom-anchor-{page_num}'></div>", unsafe_allow_html=True)
 
     # --------------------------------------
     # 情況 B：已選擇會友（顯示個人專頁）
@@ -405,13 +418,12 @@ with tab_user:
     else:
         member_name = st.session_state.current_member
         
-        # 個人專頁頂部錨點
-        st.markdown("<div id='member-profile-top'></div>", unsafe_allow_html=True)
-        
-        # 返回按鈕
+        # 返回按鈕 (橫線下方)
         if st.button("⬅️ 返回選擇名字列表", type="secondary", use_container_width=True):
             st.session_state.current_member = None
-            st.session_state.scroll_target = "members-list-top" # 返回時自動滑動到名字分區列表頂端
+            # 返回時自動滑動到上一區圖框下方，不需要再次下滑找名字
+            current_sec = st.session_state.open_section
+            st.session_state.scroll_target = f"section-bottom-anchor-{current_sec}"
             st.rerun()
             
         st.markdown(f"## 👤 {member_name} 的讀經專頁")
@@ -425,7 +437,7 @@ with tab_user:
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
                 add_single_record(current_week_key, member_name)
                 st.toast("🎉 簽到成功！")
-                st.session_state.scroll_target = "member-profile-top"
+                st.session_state.scroll_target = "divider-top-anchor"
                 st.rerun()
                 
         st.divider()
@@ -450,14 +462,14 @@ with tab_user:
                     if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}", type="secondary", use_container_width=True):
                         add_single_record(item["key"], member_name)
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
-                        st.session_state.scroll_target = "member-profile-top"
+                        st.session_state.scroll_target = "divider-top-anchor"
                         st.rerun()
             with mc2:
                 for item in missing_weeks_info[mid_m:]:
                     if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}", type="secondary", use_container_width=True):
                         add_single_record(item["key"], member_name)
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
-                        st.session_state.scroll_target = "member-profile-top"
+                        st.session_state.scroll_target = "divider-top-anchor"
                         st.rerun()
         else:
             st.success("🎉 太棒了！過去每一週的進度皆已完成！")
