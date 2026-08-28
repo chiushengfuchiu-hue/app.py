@@ -2,8 +2,12 @@ import streamlit as st
 import pandas as pd
 import datetime
 import os
+import logging
 import gspread
 from google.oauth2.service_account import Credentials
+
+# 設定 Logging 紀錄，方便背景除錯
+logging.basicConfig(level=logging.INFO)
 
 # ==========================================
 # 1. 檔案與基礎設定
@@ -45,8 +49,8 @@ def load_attendance():
                 else:
                     df[col] = df[col].astype(str).str.strip()
             return df
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"讀取簽到紀錄失敗: {e}")
     return pd.DataFrame(columns=["week_key", "member_name", "timestamp"])
 
 def save_attendance(df):
@@ -63,6 +67,8 @@ def delete_single_record(week_key, member_name):
 
 def sync_to_gsheet_async(new_rows_list):
     try:
+        if "gcp_service_account" not in st.secrets:
+            return
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds_dict = dict(st.secrets["gcp_service_account"])
         if "private_key" in creds_dict:
@@ -78,8 +84,8 @@ def sync_to_gsheet_async(new_rows_list):
         sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
         sheet = client.open(sheet_name).sheet1
         sheet.append_rows(new_rows_list)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.error(f"Google Sheets 同步失敗: {e}")
 
 def add_single_record(week_key, member_name):
     df = load_attendance()
@@ -102,8 +108,8 @@ def load_members():
             if "member_name" in df_m.columns and not df_m.empty:
                 df_m["member_name"] = df_m["member_name"].astype(str).str.strip()
                 return df_m
-        except Exception:
-            pass
+        except Exception as e:
+            logging.error(f"讀取會友名單失敗: {e}")
             
     df_m = pd.DataFrame({"member_name": INITIAL_MEMBERS})
     df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
@@ -207,23 +213,18 @@ def generate_pivot_report(target_year, max_week):
     return df_report[cols_order]
 
 # ==========================================
-# 3. CSS 樣式美化（頂部頁籤卡片化、分色放大）
+# 3. CSS 樣式美化
 # ==========================================
 st.markdown("""
     <style>
     html, body { max-width: 100vw; overflow-x: hidden; }
     h1 { font-size: clamp(26px, 6vw, 38px) !important; line-height: 1.3 !important; }
     
-    /* ------------------------------------------
-       1. 頁籤（Tab）按鈕卡片化與分色設計
-    ------------------------------------------ */
-    /* 容器間距與排版 */
     div[data-baseweb="tab-list"] {
         gap: 10px !important;
         margin-bottom: 20px !important;
     }
     
-    /* 預設頁籤通用卡片外觀 */
     button[data-baseweb="tab"] {
         border-radius: 12px !important;
         padding: 12px 20px !important;
@@ -232,7 +233,6 @@ st.markdown("""
         box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
     }
     
-   /* 頁籤內部文字：超大號加粗 */
     div[data-testid="stTabs"] [role="tab"] p, 
     div[data-testid="stTabs"] [role="tab"] div {
         font-size: clamp(22px, 5.5vw, 28px) !important;
@@ -241,56 +241,23 @@ st.markdown("""
         line-height: 1.3 !important;
     }
     
-    /* [Tab 1: 簽到專區 - 綠色系] 未選擇 */
-    button[data-baseweb="tab"]:nth-child(1) {
-        background-color: #ECFDF5 !important;
-        border: 2.5px solid #10B981 !important;
-    }
+    button[data-baseweb="tab"]:nth-child(1) { background-color: #ECFDF5 !important; border: 2.5px solid #10B981 !important; }
     button[data-baseweb="tab"]:nth-child(1) p { color: #047857 !important; }
-    
-    /* [Tab 1: 簽到專區 - 綠色系] 已選中 */
-    button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] {
-        background-color: #059669 !important;
-        border-color: #047857 !important;
-    }
+    button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] { background-color: #059669 !important; border-color: #047857 !important; }
     button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] p { color: #FFFFFF !important; }
 
-    /* [Tab 2: 過往查詢 - 藍色系] 未選擇 */
-    button[data-baseweb="tab"]:nth-child(2) {
-        background-color: #EFF6FF !important;
-        border: 2.5px solid #3B82F6 !important;
-    }
+    button[data-baseweb="tab"]:nth-child(2) { background-color: #EFF6FF !important; border: 2.5px solid #3B82F6 !important; }
     button[data-baseweb="tab"]:nth-child(2) p { color: #1D4ED8 !important; }
-    
-    /* [Tab 2: 過往查詢 - 藍色系] 已選中 */
-    button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] {
-        background-color: #2563EB !important;
-        border-color: #1D4ED8 !important;
-    }
+    button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] { background-color: #2563EB !important; border-color: #1D4ED8 !important; }
     button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] p { color: #FFFFFF !important; }
 
-    /* [Tab 3: 後台管理 - 灰色系] 未選擇 */
-    button[data-baseweb="tab"]:nth-child(3) {
-        background-color: #F8FAFC !important;
-        border: 2.5px solid #64748B !important;
-    }
+    button[data-baseweb="tab"]:nth-child(3) { background-color: #F8FAFC !important; border: 2.5px solid #64748B !important; }
     button[data-baseweb="tab"]:nth-child(3) p { color: #334155 !important; }
-    
-    /* [Tab 3: 後台管理 - 灰色系] 已選中 */
-    button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] {
-        background-color: #475569 !important;
-        border-color: #334155 !important;
-    }
+    button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] { background-color: #475569 !important; border-color: #334155 !important; }
     button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] p { color: #FFFFFF !important; }
 
-    /* 隱藏預設紅色的底線指示條 */
-    div[data-baseweb="tab-highlight"] {
-        display: none !important;
-    }
+    div[data-baseweb="tab-highlight"] { display: none !important; }
 
-    /* ------------------------------------------
-       2. 圖框 (Expander) 與按鈕優化
-    ------------------------------------------ */
     div[data-aria-expanded] p, div[data-testid="stExpander"] summary p {
         font-size: clamp(20px, 4.8vw, 26px) !important;
         font-weight: 800 !important;
@@ -316,9 +283,7 @@ st.markdown("""
         color: #0F172A !important;
         margin-bottom: 10px !important;
     }
-    div[data-testid="stButton"] button[kind="secondary"]:hover {
-        background-color: #E0F2FE !important;
-    }
+    div[data-testid="stButton"] button[kind="secondary"]:hover { background-color: #E0F2FE !important; }
     div[data-testid="stButton"] button[kind="primary"] {
         min-height: 3.5em !important;
         border-radius: 14px !important;
@@ -344,7 +309,6 @@ df_attendance = load_attendance()
 
 st.title(f"📖 最新讀經進度表（{current_week_display}）")
 
-# 主分頁（放大字體，獨立開闢「過往進度查詢」）
 tab_user, tab_history, tab_admin = st.tabs([
     "✍️ 會友簽到專區", 
     "🗓️ 過往進度查詢", 
@@ -352,10 +316,9 @@ tab_user, tab_history, tab_admin = st.tabs([
 ])
 
 # ------------------------------------------
-# TAB 1: 會友簽到區（純粹簽到，高度簡化）
+# TAB 1: 會友簽到區
 # ------------------------------------------
 with tab_user:
-    # 1. 顯示最新一週的進度圖片
     current_img_path = get_schedule_image_path(current_week_key)
     if current_img_path:
         st.image(current_img_path, caption=f"【最新進度】{current_week_display}", use_container_width=True)
@@ -364,7 +327,6 @@ with tab_user:
 
     st.divider()
 
-    # 2. 個人簽到選擇區（圖框字體已放大，全動態切分）
     if st.session_state.current_member is None:
         st.markdown("### 👇 請點擊包含您名字的圖框：")
         
@@ -405,7 +367,6 @@ with tab_user:
                                 st.rerun()
 
     else:
-        # 個人專屬簽到頁面
         member_name = st.session_state.current_member
         if st.button("⬅️ 返回選擇名字列表", type="secondary", use_container_width=True):
             st.session_state.current_member = None
@@ -443,20 +404,19 @@ with tab_user:
             mc1, mc2 = st.columns(2)
             with mc1:
                 for item in missing_weeks_info[:mid_m]:
-                    if st.button(f"🟡 {item['display']}", key=f"miss_{item['key']}", type="secondary", use_container_width=True):
+                    if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}", type="secondary", use_container_width=True):
                         add_single_record(item["key"], member_name)
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
                         st.rerun()
             with mc2:
                 for item in missing_weeks_info[mid_m:]:
-                    if st.button(f"🟡 {item['display']}", key=f"miss_{item['key']}", type="secondary", use_container_width=True):
+                    if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}", type="secondary", use_container_width=True):
                         add_single_record(item["key"], member_name)
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
                         st.rerun()
         else:
             st.success("🎉 太棒了！過去每一週的進度皆已完成！")
 
-    # 3. 本週經文移至最下方
     st.divider()
     verse_info = get_weekly_verse(current_week_num)
     st.markdown(f"📖 **本週靈修經文**：{verse_info['ref']}")
@@ -540,20 +500,21 @@ with tab_admin:
                 label=f"📥 下載【{time_range}】簽到統計 Excel 報表 (CSV)",
                 data=csv_bytes,
                 file_name=f"Church_Attendance_{time_range}_{datetime.datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                type="primary"
+                mime="text/csv"
             )
             
             st.divider()
             st.markdown("#### 🛠️ 誤簽撤銷 / 刪除紀錄區")
-            col_del1, col_del2, col_del3 = st.columns([2, 2, 1])
+            col_del1, col_del2, col_del3, col_del4 = st.columns([2, 2, 2, 1.5])
 
             with col_del1:
                 del_member = st.selectbox("選擇要修正的會友：", member_list)
             with col_del2:
-                del_week_num = st.number_input("選擇要撤銷的週數 (1~52)：", min_value=1, max_value=52, value=current_week_num)
-                del_week_key = f"Y{PLAN_YEAR}-W{del_week_num:02d}"
+                del_year_num = st.number_input("選擇年份：", min_value=1, max_value=4, value=PLAN_YEAR)
             with col_del3:
+                del_week_num = st.number_input("選擇週數 (1~52)：", min_value=1, max_value=52, value=current_week_num)
+                del_week_key = f"Y{del_year_num}-W{del_week_num:02d}"
+            with col_del4:
                 st.write("")
                 st.write("")
                 if st.button("❌ 撤銷此簽到", type="secondary"):
