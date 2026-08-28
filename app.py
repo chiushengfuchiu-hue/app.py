@@ -30,7 +30,7 @@ INITIAL_MEMBERS = [
     "邱聖富"
 ]
 
-st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
+st.set_page_config(page_title="四年精讀聖經運動簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
 # 2. 資料庫與邏輯處理
@@ -342,7 +342,7 @@ df_members = load_members()
 member_list = df_members["member_name"].tolist()
 df_attendance = load_attendance()
 
-st.title(f"📖 教會讀經簽到（{current_week_display}）")
+st.title(f"📖 讀經進度簽到區（{current_week_display}）")
 
 # 主分頁（放大字體，獨立開闢「過往進度查詢」）
 tab_user, tab_history, tab_admin = st.tabs([
