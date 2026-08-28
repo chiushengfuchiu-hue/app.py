@@ -273,7 +273,7 @@ with tab_user:
     enc_text = f"\n\n💬 **心靈補給**：{verse_info['encouragement']}" if verse_info.get('encouragement') else ""
     st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**{enc_text}")
 
-    st.markdown("#### 🗓️ 讀經進度表查詢")
+    st.markdown("#### 🗓️ 過往讀經進度表查詢")
     
     col_y, col_w = st.columns([1, 2])
     with col_y:
