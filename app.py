@@ -261,7 +261,7 @@ df_members = load_members()
 member_list = df_members["member_name"].tolist()
 df_attendance = load_attendance()
 
-st.title(f"📖 教會讀經簽到（{current_week_display}）")
+st.title(f"📖 四年精讀聖經運動簽到系統（{current_week_display}）")
 
 tab_user, tab_admin = st.tabs(["✍️ 會友簽到專區", "🔒 後台統計與管理"])
 
