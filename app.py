@@ -207,93 +207,100 @@ def generate_pivot_report(target_year, max_week):
     return df_report[cols_order]
 
 # ==========================================
-# 3. CSS 樣式美化（頂部頁籤卡片化、分色放大）
+# 3. CSS 樣式美化（強制寫入頁籤樣式、超大字體）
 # ==========================================
 st.markdown("""
     <style>
     html, body { max-width: 100vw; overflow-x: hidden; }
-    h1 { font-size: clamp(24px, 6vw, 36px) !important; line-height: 1.3 !important; }
+    h1 { font-size: clamp(26px, 6vw, 38px) !important; line-height: 1.3 !important; }
     
     /* ------------------------------------------
-       1. 頁籤（Tab）按鈕卡片化與分色設計
+       1. 強制重構 Tab 頁籤為彩色大卡片
     ------------------------------------------ */
-    /* 容器間距與排版 */
-    div[data-baseweb="tab-list"] {
-        gap: 10px !important;
-        margin-bottom: 15px !important;
+    /* 頁籤容器外觀 */
+    div[data-testid="stTabs"] [role="tablist"] {
+        gap: 12px !important;
+        margin-bottom: 20px !important;
+        border-bottom: none !important;
     }
     
-    /* 預設頁籤通用卡片外觀 */
-    button[data-baseweb="tab"] {
-        border-radius: 12px !important;
-        padding: 12px 20px !important;
-        margin: 2px !important;
+    /* 所有 Tab 按鈕基礎樣式 */
+    div[data-testid="stTabs"] [role="tab"] {
+        border-radius: 14px !important;
+        padding: 12px 24px !important;
+        margin-bottom: 5px !important;
         transition: all 0.2s ease-in-out !important;
-        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
+        box-shadow: 0px 3px 8px rgba(0,0,0,0.12) !important;
+        border-width: 3px !important;
+        border-style: solid !important;
     }
-    
-    /* 內文文字放大加粗 */
-    button[data-baseweb="tab"] p {
-        font-size: clamp(20px, 5vw, 24px) !important;
-        font-weight: 800 !important;
-        line-height: 1.2 !important;
-    }
-    
-    /* [Tab 1: 簽到專區 - 綠色系] 未選擇 */
-    button[data-baseweb="tab"]:nth-child(1) {
-        background-color: #ECFDF5 !important;
-        border: 2.5px solid #10B981 !important;
-    }
-    button[data-baseweb="tab"]:nth-child(1) p { color: #047857 !important; }
-    
-    /* [Tab 1: 簽到專區 - 綠色系] 已選中 */
-    button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] {
-        background-color: #059669 !important;
-        border-color: #047857 !important;
-    }
-    button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] p { color: #FFFFFF !important; }
 
-    /* [Tab 2: 過往查詢 - 藍色系] 未選擇 */
-    button[data-baseweb="tab"]:nth-child(2) {
-        background-color: #EFF6FF !important;
-        border: 2.5px solid #3B82F6 !important;
+    /* 頁籤內部文字：超大號加粗 */
+    div[data-testid="stTabs"] [role="tab"] p, 
+    div[data-testid="stTabs"] [role="tab"] div {
+        font-size: clamp(22px, 5.5vw, 28px) !important;
+        font-weight: 900 !important;
+        letter-spacing: 1px !important;
+        line-height: 1.3 !important;
     }
-    button[data-baseweb="tab"]:nth-child(2) p { color: #1D4ED8 !important; }
-    
-    /* [Tab 2: 過往查詢 - 藍色系] 已選中 */
-    button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] {
-        background-color: #2563EB !important;
-        border-color: #1D4ED8 !important;
-    }
-    button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] p { color: #FFFFFF !important; }
 
-    /* [Tab 3: 後台管理 - 灰色系] 未選擇 */
-    button[data-baseweb="tab"]:nth-child(3) {
-        background-color: #F8FAFC !important;
-        border: 2.5px solid #64748B !important;
+    /* [Tab 1: 簽到專區 - 鮮豔綠色卡片] 未選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(1) {
+        background-color: #E6F4EA !important;
+        border-color: #137333 !important;
     }
-    button[data-baseweb="tab"]:nth-child(3) p { color: #334155 !important; }
-    
-    /* [Tab 3: 後台管理 - 灰色系] 已選中 */
-    button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] {
-        background-color: #475569 !important;
-        border-color: #334155 !important;
-    }
-    button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] p { color: #FFFFFF !important; }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(1) p { color: #137333 !important; }
 
-    /* 隱藏預設紅色的底線指示條 */
-    div[data-baseweb="tab-highlight"] {
+    /* [Tab 1: 簽到專區] 已選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(1)[aria-selected="true"] {
+        background-color: #137333 !important;
+        border-color: #0B5125 !important;
+    }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(1)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+    /* [Tab 2: 過往查詢 - 鮮豔藍色卡片] 未選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(2) {
+        background-color: #E8F0FE !important;
+        border-color: #1A73E8 !important;
+    }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(2) p { color: #1A73E8 !important; }
+
+    /* [Tab 2: 過往查詢] 已選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(2)[aria-selected="true"] {
+        background-color: #1A73E8 !important;
+        border-color: #1557B0 !important;
+    }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(2)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+    /* [Tab 3: 後台管理 - 質感灰色卡片] 未選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(3) {
+        background-color: #F1F3F4 !important;
+        border-color: #5F6368 !important;
+    }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(3) p { color: #3C4043 !important; }
+
+    /* [Tab 3: 後台管理] 已選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(3)[aria-selected="true"] {
+        background-color: #5F6368 !important;
+        border-color: #202124 !important;
+    }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(3)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+    /* 完全徹底關閉下方紅線條指示器 */
+    div[data-testid="stTabs"] [data-baseweb="tab-highlight"],
+    div[data-testid="stTabs"] [role="tablist"] + div {
         display: none !important;
+        height: 0px !important;
     }
 
     /* ------------------------------------------
-       2. 圖框 (Expander) 與按鈕優化
+       2. 圖框 (Expander) 與簽到按鈕大字體優化
     ------------------------------------------ */
     div[data-aria-expanded] p, div[data-testid="stExpander"] summary p {
-        font-size: clamp(20px, 4.8vw, 26px) !important;
-        font-weight: 800 !important;
+        font-size: clamp(22px, 5.2vw, 28px) !important;
+        font-weight: 900 !important;
         line-height: 1.5 !important;
-        color: #1E293B !important;
+        color: #0F172A !important;
     }
     
     div[data-testid="stButton"] button {
@@ -302,31 +309,30 @@ st.markdown("""
         word-break: break-word !important;
     }
     div[data-testid="stButton"] button p {
-        font-size: clamp(20px, 5.5vw, 28px) !important;
-        font-weight: 800 !important;
+        font-size: clamp(22px, 6vw, 30px) !important;
+        font-weight: 900 !important;
     }
     div[data-testid="stButton"] button[kind="secondary"] {
-        min-height: 3.2em !important;
-        padding: 10px 8px !important;
+        min-height: 3.5em !important;
+        padding: 12px 10px !important;
         border-radius: 14px !important;
-        border: 2.5px solid #0284C7 !important;
+        border: 3px solid #0284C7 !important;
         background-color: #FFFFFF !important;
         color: #0F172A !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 12px !important;
     }
     div[data-testid="stButton"] button[kind="secondary"]:hover {
         background-color: #E0F2FE !important;
     }
     div[data-testid="stButton"] button[kind="primary"] {
-        min-height: 3.5em !important;
+        min-height: 3.8em !important;
         border-radius: 14px !important;
         background-color: #059669 !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 12px !important;
     }
     div[data-testid="stButton"] button[kind="primary"] p { color: #FFFFFF !important; }
     </style>
 """, unsafe_allow_html=True)
-
 # ==========================================
 # 4. 主程式介面
 # ==========================================
