@@ -207,55 +207,128 @@ def generate_pivot_report(target_year, max_week):
     return df_report[cols_order]
 
 # ==========================================
-# 3. CSS 樣式美化（字體全面放大、長者優化）
+# 3. CSS 樣式美化（強制寫入頁籤樣式、超大字體）
 # ==========================================
 st.markdown("""
     <style>
     html, body { max-width: 100vw; overflow-x: hidden; }
-    h1 { font-size: clamp(24px, 6vw, 36px) !important; line-height: 1.3 !important; }
+    h1 { font-size: clamp(26px, 6vw, 38px) !important; line-height: 1.3 !important; }
     
-    /* 1. 分頁（Tab）字體放大 */
-    button[data-baseweb="tab"] p {
-        font-size: clamp(20px, 5vw, 24px) !important;
-        font-weight: 800 !important;
-        padding: 4px 8px !important;
+    /* ------------------------------------------
+       1. 強制重構 Tab 頁籤為彩色大卡片
+    ------------------------------------------ */
+    /* 頁籤容器外觀 */
+    div[data-testid="stTabs"] [role="tablist"] {
+        gap: 12px !important;
+        margin-bottom: 20px !important;
+        border-bottom: none !important;
     }
     
-    /* 2. 圖框 (Expander) 標題字體與行高放大 */
+    /* 所有 Tab 按鈕基礎樣式 */
+    div[data-testid="stTabs"] [role="tab"] {
+        border-radius: 14px !important;
+        padding: 12px 24px !important;
+        margin-bottom: 5px !important;
+        transition: all 0.2s ease-in-out !important;
+        box-shadow: 0px 3px 8px rgba(0,0,0,0.12) !important;
+        border-width: 3px !important;
+        border-style: solid !important;
+    }
+
+    /* 頁籤內部文字：超大號加粗 */
+    div[data-testid="stTabs"] [role="tab"] p, 
+    div[data-testid="stTabs"] [role="tab"] div {
+        font-size: clamp(22px, 5.5vw, 28px) !important;
+        font-weight: 900 !important;
+        letter-spacing: 1px !important;
+        line-height: 1.3 !important;
+    }
+
+    /* [Tab 1: 簽到專區 - 鮮豔綠色卡片] 未選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(1) {
+        background-color: #E6F4EA !important;
+        border-color: #137333 !important;
+    }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(1) p { color: #137333 !important; }
+
+    /* [Tab 1: 簽到專區] 已選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(1)[aria-selected="true"] {
+        background-color: #137333 !important;
+        border-color: #0B5125 !important;
+    }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(1)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+    /* [Tab 2: 過往查詢 - 鮮豔藍色卡片] 未選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(2) {
+        background-color: #E8F0FE !important;
+        border-color: #1A73E8 !important;
+    }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(2) p { color: #1A73E8 !important; }
+
+    /* [Tab 2: 過往查詢] 已選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(2)[aria-selected="true"] {
+        background-color: #1A73E8 !important;
+        border-color: #1557B0 !important;
+    }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(2)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+    /* [Tab 3: 後台管理 - 質感灰色卡片] 未選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(3) {
+        background-color: #F1F3F4 !important;
+        border-color: #5F6368 !important;
+    }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(3) p { color: #3C4043 !important; }
+
+    /* [Tab 3: 後台管理] 已選中 */
+    div[data-testid="stTabs"] [role="tab"]:nth-child(3)[aria-selected="true"] {
+        background-color: #5F6368 !important;
+        border-color: #202124 !important;
+    }
+    div[data-testid="stTabs"] [role="tab"]:nth-child(3)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+    /* 完全徹底關閉下方紅線條指示器 */
+    div[data-testid="stTabs"] [data-baseweb="tab-highlight"],
+    div[data-testid="stTabs"] [role="tablist"] + div {
+        display: none !important;
+        height: 0px !important;
+    }
+
+    /* ------------------------------------------
+       2. 圖框 (Expander) 與簽到按鈕大字體優化
+    ------------------------------------------ */
     div[data-aria-expanded] p, div[data-testid="stExpander"] summary p {
-        font-size: clamp(20px, 4.8vw, 26px) !important;
-        font-weight: 800 !important;
+        font-size: clamp(22px, 5.2vw, 28px) !important;
+        font-weight: 900 !important;
         line-height: 1.5 !important;
-        color: #1E293B !important;
+        color: #0F172A !important;
     }
     
-    /* 3. 按鈕（名字按鈕）放大 */
     div[data-testid="stButton"] button {
         width: 100% !important;
         white-space: normal !important;
         word-break: break-word !important;
     }
     div[data-testid="stButton"] button p {
-        font-size: clamp(20px, 5.5vw, 28px) !important;
-        font-weight: 800 !important;
+        font-size: clamp(22px, 6vw, 30px) !important;
+        font-weight: 900 !important;
     }
     div[data-testid="stButton"] button[kind="secondary"] {
-        min-height: 3.2em !important;
-        padding: 10px 8px !important;
+        min-height: 3.5em !important;
+        padding: 12px 10px !important;
         border-radius: 14px !important;
-        border: 2.5px solid #0284C7 !important;
+        border: 3px solid #0284C7 !important;
         background-color: #FFFFFF !important;
         color: #0F172A !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 12px !important;
     }
     div[data-testid="stButton"] button[kind="secondary"]:hover {
         background-color: #E0F2FE !important;
     }
     div[data-testid="stButton"] button[kind="primary"] {
-        min-height: 3.5em !important;
+        min-height: 3.8em !important;
         border-radius: 14px !important;
         background-color: #059669 !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 12px !important;
     }
     div[data-testid="stButton"] button[kind="primary"] p { color: #FFFFFF !important; }
     </style>
