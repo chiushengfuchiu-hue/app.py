@@ -315,6 +315,8 @@ tab_user, tab_history, tab_admin = st.tabs([
     "🔒 後台統計管理"
 ])
 
+import streamlit.components.v1 as components
+
 # ------------------------------------------
 # TAB 1: 會友簽到區
 # ------------------------------------------
@@ -327,12 +329,31 @@ with tab_user:
 
     st.divider()
 
-    # 初始化手風琴展開狀態 (預設都不展開 None)
+    # 初始化滾動錨點與手風琴展開狀態
+    if "scroll_target" not in st.session_state:
+        st.session_state.scroll_target = None
     if "expanded_page" not in st.session_state:
         st.session_state.expanded_page = None
 
-    # 未選擇會友時：顯示獨佔式風琴選單 (Accordian)
+    # 若有設定滾動目標，觸發 JavaScript 自動定位 (捲動至視野頂端)
+    if st.session_state.scroll_target:
+        target_id = st.session_state.scroll_target
+        components.html(
+            f"""
+            <script>
+                window.parent.document.getElementById('{target_id}')?.scrollIntoView({{behavior: 'smooth', block: 'start'}});
+            </script>
+            """,
+            height=0,
+        )
+        # 觸發一次定位後清空，避免影響後續操作
+        st.session_state.scroll_target = None
+
+    # --------------------------------------
+    # 情況 A：未選擇會友（顯示分區手風琴選單）
+    # --------------------------------------
     if st.session_state.current_member is None:
+        st.markdown("<div id='members-list-top'></div>", unsafe_allow_html=True)
         st.markdown("### 👇 請點擊包含您名字的分區進行簽到：")
         
         valid_members = [
@@ -351,7 +372,9 @@ with tab_user:
                 names_text = "、".join(chunk)
                 expander_title = f"📦 【第 {page_num} 區】 {names_text}"
                 
-                # 只有當前記錄的 expanded_page 等於該區編號時才展開
+                # 在該分區上方放置 HTML 錨點
+                st.markdown(f"<div id='section-anchor-{page_num}'></div>", unsafe_allow_html=True)
+                
                 is_open = (st.session_state.expanded_page == page_num)
                 
                 with st.expander(expander_title, expanded=is_open):
@@ -364,6 +387,7 @@ with tab_user:
                             status_icon = "✅" if is_signed else "👤"
                             if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
+                                st.session_state.scroll_target = "member-profile-top" # 設定進入個人頁後定位到最頂端
                                 st.rerun()
 
                     with col2:
@@ -372,15 +396,22 @@ with tab_user:
                             status_icon = "✅" if is_signed else "👤"
                             if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
+                                st.session_state.scroll_target = "member-profile-top" # 設定進入個人頁後定位到最頂端
                                 st.rerun()
 
-    # 已選擇會友：顯示該會友的個人專頁與補簽按鈕
+    # --------------------------------------
+    # 情況 B：已選擇會友（顯示個人專頁）
+    # --------------------------------------
     else:
         member_name = st.session_state.current_member
         
-        # 返回按鈕放在最上方
+        # 個人專頁頂部錨點
+        st.markdown("<div id='member-profile-top'></div>", unsafe_allow_html=True)
+        
+        # 返回按鈕
         if st.button("⬅️ 返回選擇名字列表", type="secondary", use_container_width=True):
             st.session_state.current_member = None
+            st.session_state.scroll_target = "members-list-top" # 返回時自動滑動到名字分區列表頂端
             st.rerun()
             
         st.markdown(f"## 👤 {member_name} 的讀經專頁")
@@ -394,6 +425,7 @@ with tab_user:
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
                 add_single_record(current_week_key, member_name)
                 st.toast("🎉 簽到成功！")
+                st.session_state.scroll_target = "member-profile-top"
                 st.rerun()
                 
         st.divider()
@@ -418,12 +450,14 @@ with tab_user:
                     if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}", type="secondary", use_container_width=True):
                         add_single_record(item["key"], member_name)
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
+                        st.session_state.scroll_target = "member-profile-top"
                         st.rerun()
             with mc2:
                 for item in missing_weeks_info[mid_m:]:
                     if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}", type="secondary", use_container_width=True):
                         add_single_record(item["key"], member_name)
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
+                        st.session_state.scroll_target = "member-profile-top"
                         st.rerun()
         else:
             st.success("🎉 太棒了！過去每一週的進度皆已完成！")
