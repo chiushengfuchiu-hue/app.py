@@ -30,7 +30,7 @@ INITIAL_MEMBERS = [
     "邱聖富"
 ]
 
-st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
+st.set_page_config(page_title="4年精讀聖經簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
 # 2. 資料庫與邏輯處理
@@ -207,21 +207,88 @@ def generate_pivot_report(target_year, max_week):
     return df_report[cols_order]
 
 # ==========================================
-# 3. CSS 樣式美化（字體全面放大、長者優化）
+# 3. CSS 樣式美化（頂部頁籤卡片化、分色放大）
 # ==========================================
 st.markdown("""
     <style>
     html, body { max-width: 100vw; overflow-x: hidden; }
     h1 { font-size: clamp(24px, 6vw, 36px) !important; line-height: 1.3 !important; }
     
-    /* 1. 分頁（Tab）字體放大 */
+    /* ------------------------------------------
+       1. 頁籤（Tab）按鈕卡片化與分色設計
+    ------------------------------------------ */
+    /* 容器間距與排版 */
+    div[data-baseweb="tab-list"] {
+        gap: 10px !important;
+        margin-bottom: 15px !important;
+    }
+    
+    /* 預設頁籤通用卡片外觀 */
+    button[data-baseweb="tab"] {
+        border-radius: 12px !important;
+        padding: 12px 20px !important;
+        margin: 2px !important;
+        transition: all 0.2s ease-in-out !important;
+        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
+    }
+    
+    /* 內文文字放大加粗 */
     button[data-baseweb="tab"] p {
         font-size: clamp(20px, 5vw, 24px) !important;
         font-weight: 800 !important;
-        padding: 4px 8px !important;
+        line-height: 1.2 !important;
     }
     
-    /* 2. 圖框 (Expander) 標題字體與行高放大 */
+    /* [Tab 1: 簽到專區 - 綠色系] 未選擇 */
+    button[data-baseweb="tab"]:nth-child(1) {
+        background-color: #ECFDF5 !important;
+        border: 2.5px solid #10B981 !important;
+    }
+    button[data-baseweb="tab"]:nth-child(1) p { color: #047857 !important; }
+    
+    /* [Tab 1: 簽到專區 - 綠色系] 已選中 */
+    button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] {
+        background-color: #059669 !important;
+        border-color: #047857 !important;
+    }
+    button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+    /* [Tab 2: 過往查詢 - 藍色系] 未選擇 */
+    button[data-baseweb="tab"]:nth-child(2) {
+        background-color: #EFF6FF !important;
+        border: 2.5px solid #3B82F6 !important;
+    }
+    button[data-baseweb="tab"]:nth-child(2) p { color: #1D4ED8 !important; }
+    
+    /* [Tab 2: 過往查詢 - 藍色系] 已選中 */
+    button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] {
+        background-color: #2563EB !important;
+        border-color: #1D4ED8 !important;
+    }
+    button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+    /* [Tab 3: 後台管理 - 灰色系] 未選擇 */
+    button[data-baseweb="tab"]:nth-child(3) {
+        background-color: #F8FAFC !important;
+        border: 2.5px solid #64748B !important;
+    }
+    button[data-baseweb="tab"]:nth-child(3) p { color: #334155 !important; }
+    
+    /* [Tab 3: 後台管理 - 灰色系] 已選中 */
+    button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] {
+        background-color: #475569 !important;
+        border-color: #334155 !important;
+    }
+    button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+    /* 隱藏預設紅色的底線指示條 */
+    div[data-baseweb="tab-highlight"] {
+        display: none !important;
+    }
+
+    /* ------------------------------------------
+       2. 圖框 (Expander) 與按鈕優化
+    ------------------------------------------ */
     div[data-aria-expanded] p, div[data-testid="stExpander"] summary p {
         font-size: clamp(20px, 4.8vw, 26px) !important;
         font-weight: 800 !important;
@@ -229,7 +296,6 @@ st.markdown("""
         color: #1E293B !important;
     }
     
-    /* 3. 按鈕（名字按鈕）放大 */
     div[data-testid="stButton"] button {
         width: 100% !important;
         white-space: normal !important;
@@ -274,7 +340,7 @@ df_members = load_members()
 member_list = df_members["member_name"].tolist()
 df_attendance = load_attendance()
 
-st.title(f"📖 教會讀經簽到（{current_week_display}）")
+st.title(f"📖 四年精讀聖經運動簽到（{current_week_display}）")
 
 # 主分頁（放大字體，獨立開闢「過往進度查詢」）
 tab_user, tab_history, tab_admin = st.tabs([
