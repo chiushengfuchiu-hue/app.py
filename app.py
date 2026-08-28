@@ -339,32 +339,6 @@ with tab_user:
                             if st.button(f"{status_icon} {name}", key=f"btn_dynamic_{page_num}_{name}", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
                                 st.rerun()
-        # 2. 第 31 位及之後的會友（第 4 區動態伸縮區）
-        dynamic_members = member_list[30:]
-        if dynamic_members:
-            names_text_dyn = "、".join(dynamic_members)
-            expander_title_dyn = f"📦 【第 4 區】 {names_text_dyn}"
-            
-            with st.expander(expander_title_dyn, expanded=False):
-                col1, col2 = st.columns(2)
-                mid_dyn = (len(dynamic_members) + 1) // 2
-                
-                with col1:
-                    for name in dynamic_members[:mid_dyn]:
-                        is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
-                        status_icon = "✅" if is_signed else "👤"
-                        if st.button(f"{status_icon} {name}", key=f"btn_chunk_4_{name}", type="secondary", use_container_width=True):
-                            st.session_state.current_member = name
-                            st.rerun()
-
-                with col2:
-                    for name in dynamic_members[mid_dyn:]:
-                        is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
-                        status_icon = "✅" if is_signed else "👤"
-                        if st.button(f"{status_icon} {name}", key=f"btn_chunk_4_{name}", type="secondary", use_container_width=True):
-                            st.session_state.current_member = name
-                            st.rerun()
-
     else:
         member_name = st.session_state.current_member
         if st.button("⬅️ 返回名字列表", type="secondary", use_container_width=True):
