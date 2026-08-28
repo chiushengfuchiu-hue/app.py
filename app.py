@@ -30,7 +30,7 @@ INITIAL_MEMBERS = [
     "邱聖富"
 ]
 
-st.set_page_config(page_title="四年精讀聖經運動簽到系統", page_icon="📖", layout="wide")
+st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
 # 2. 資料庫與邏輯處理
@@ -154,7 +154,6 @@ def save_schedule_record(week_key, uploaded_file):
     df_s.to_csv(SCHEDULE_RECORD_FILE, index=False, encoding="utf-8-sig")
 
 def get_latest_uploaded_week_key():
-    """關鍵：自動計算目前最新成功上傳圖檔的 week_key 與 week_num"""
     if os.path.exists(SCHEDULE_RECORD_FILE):
         try:
             df_s = pd.read_csv(SCHEDULE_RECORD_FILE)
@@ -174,7 +173,6 @@ def get_latest_uploaded_week_key():
         except Exception:
             pass
             
-    # 預設備用機制：若尚無任何圖片紀錄，退回當前日曆週別
     now = datetime.datetime.now()
     is_sunday = (now.weekday() == 6)
     calc_date = now + datetime.timedelta(days=1) if is_sunday else now
@@ -209,39 +207,55 @@ def generate_pivot_report(target_year, max_week):
     return df_report[cols_order]
 
 # ==========================================
-# 3. CSS 樣式美化
+# 3. CSS 樣式美化（字體全面放大、長者優化）
 # ==========================================
 st.markdown("""
     <style>
     html, body { max-width: 100vw; overflow-x: hidden; }
-    h1 { font-size: clamp(22px, 6vw, 32px) !important; line-height: 1.3 !important; }
+    h1 { font-size: clamp(24px, 6vw, 36px) !important; line-height: 1.3 !important; }
     
+    /* 1. 分頁（Tab）字體放大 */
+    button[data-baseweb="tab"] p {
+        font-size: clamp(20px, 5vw, 24px) !important;
+        font-weight: 800 !important;
+        padding: 4px 8px !important;
+    }
+    
+    /* 2. 圖框 (Expander) 標題字體與行高放大 */
+    div[data-aria-expanded] p, div[data-testid="stExpander"] summary p {
+        font-size: clamp(20px, 4.8vw, 26px) !important;
+        font-weight: 800 !important;
+        line-height: 1.5 !important;
+        color: #1E293B !important;
+    }
+    
+    /* 3. 按鈕（名字按鈕）放大 */
     div[data-testid="stButton"] button {
         width: 100% !important;
         white-space: normal !important;
         word-break: break-word !important;
     }
     div[data-testid="stButton"] button p {
-        font-size: clamp(18px, 5vw, 26px) !important;
+        font-size: clamp(20px, 5.5vw, 28px) !important;
         font-weight: 800 !important;
     }
     div[data-testid="stButton"] button[kind="secondary"] {
-        min-height: 3em !important;
-        padding: 8px 6px !important;
-        border-radius: 12px !important;
-        border: 2px solid #0284C7 !important;
+        min-height: 3.2em !important;
+        padding: 10px 8px !important;
+        border-radius: 14px !important;
+        border: 2.5px solid #0284C7 !important;
         background-color: #FFFFFF !important;
         color: #0F172A !important;
-        margin-bottom: 8px !important;
+        margin-bottom: 10px !important;
     }
     div[data-testid="stButton"] button[kind="secondary"]:hover {
         background-color: #E0F2FE !important;
     }
     div[data-testid="stButton"] button[kind="primary"] {
-        min-height: 3.2em !important;
-        border-radius: 12px !important;
+        min-height: 3.5em !important;
+        border-radius: 14px !important;
         background-color: #059669 !important;
-        margin-bottom: 8px !important;
+        margin-bottom: 10px !important;
     }
     div[data-testid="stButton"] button[kind="primary"] p { color: #FFFFFF !important; }
     </style>
@@ -253,7 +267,6 @@ st.markdown("""
 if "current_member" not in st.session_state:
     st.session_state.current_member = None
 
-# 【核心變更】系統預設週別由「最新上傳的進度圖檔」判定，完全不隨時間強行切換
 current_week_key, current_week_num = get_latest_uploaded_week_key()
 current_week_display = f"第 {PLAN_YEAR} 年 - 第 {current_week_num:02d} 週"
 
@@ -261,48 +274,32 @@ df_members = load_members()
 member_list = df_members["member_name"].tolist()
 df_attendance = load_attendance()
 
-st.title(f"📖 四年精讀聖經運動簽到系統（{current_week_display}）")
+st.title(f"📖 教會讀經簽到（{current_week_display}）")
 
-tab_user, tab_admin = st.tabs(["✍️ 會友簽到專區", "🔒 後台統計與管理"])
+# 主分頁（放大字體，獨立開闢「過往進度查詢」）
+tab_user, tab_history, tab_admin = st.tabs([
+    "✍️ 會友簽到專區", 
+    "🗓️ 過往進度查詢", 
+    "🔒 後台統計管理"
+])
 
 # ------------------------------------------
-# TAB 1: 會友簽到區
+# TAB 1: 會友簽到區（純粹簽到，高度簡化）
 # ------------------------------------------
 with tab_user:
-    verse_info = get_weekly_verse(current_week_num)
-    enc_text = f"\n\n💬 **心靈補給**：{verse_info['encouragement']}" if verse_info.get('encouragement') else ""
-    st.info(f"📖 **本週經文**：*{verse_info['verse']}* —— **{verse_info['ref']}**{enc_text}")
-
-    st.markdown("#### 🗓️ 過往讀經進度表查詢")
-    
-    col_y, col_w = st.columns([1, 2])
-    with col_y:
-        selected_year = st.selectbox("請選擇年份：", [f"第 {y} 年 (Y{y})" for y in range(PLAN_YEAR, 0, -1)], index=0)
-        target_y_num = int(selected_year.split("第 ")[1].split(" 年")[0])
-    
-    with col_w:
-        max_w_display = current_week_num if target_y_num == PLAN_YEAR else 52
-        week_options = [f"第 {w:02d} 週" for w in range(max_w_display, 0, -1)]
-        selected_w_label = st.selectbox("請選擇週數：", week_options, index=0)
-        target_w_num = int(selected_w_label.replace("第 ", "").replace(" 週", ""))
-        
-    selected_week_key = f"Y{target_y_num}-W{target_w_num:02d}"
-    selected_img_path = get_schedule_image_path(selected_week_key)
-    
-    if selected_img_path:
-        st.image(selected_img_path, caption=f"【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】進度對照表", use_container_width=True)
+    # 1. 顯示最新一週的進度圖片
+    current_img_path = get_schedule_image_path(current_week_key)
+    if current_img_path:
+        st.image(current_img_path, caption=f"【最新進度】{current_week_display}", use_container_width=True)
     else:
-        st.warning(f"📌 目前尚未上傳【Y{target_y_num}-W{target_w_num:02d}】的進度表圖片。")
+        st.info(f"📌 目前為【{current_week_display}】簽到。")
 
     st.divider()
 
-# ------------------------------------------
-    # 【會友名字選擇區 - 全動態分區，無名單不顯示】
-    # ------------------------------------------
+    # 2. 個人簽到選擇區（圖框字體已放大，全動態切分）
     if st.session_state.current_member is None:
-        st.markdown("#### 👇 請點擊包含您名字的圖框：")
+        st.markdown("### 👇 請點擊包含您名字的圖框：")
         
-        # 過濾掉空白名稱與「會友 XX」等占位測試字串
         valid_members = [
             m for m in member_list 
             if m and str(m).strip() and not str(m).startswith("會友")
@@ -311,7 +308,6 @@ with tab_user:
         chunk_size = 10
         total_valid = len(valid_members)
         
-        # 每 10 人自動切為一個圖框，有多少人就生成多少個圖框
         for i in range(0, total_valid, chunk_size):
             chunk = valid_members[i:i + chunk_size]
             page_num = (i // chunk_size) + 1
@@ -328,7 +324,7 @@ with tab_user:
                         for name in chunk[:mid]:
                             is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
                             status_icon = "✅" if is_signed else "👤"
-                            if st.button(f"{status_icon} {name}", key=f"btn_dynamic_{page_num}_{name}", type="secondary", use_container_width=True):
+                            if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
                                 st.rerun()
 
@@ -336,12 +332,14 @@ with tab_user:
                         for name in chunk[mid:]:
                             is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
                             status_icon = "✅" if is_signed else "👤"
-                            if st.button(f"{status_icon} {name}", key=f"btn_dynamic_{page_num}_{name}", type="secondary", use_container_width=True):
+                            if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
                                 st.rerun()
+
     else:
+        # 個人專屬簽到頁面
         member_name = st.session_state.current_member
-        if st.button("⬅️ 返回名字列表", type="secondary", use_container_width=True):
+        if st.button("⬅️ 返回選擇名字列表", type="secondary", use_container_width=True):
             st.session_state.current_member = None
             st.rerun()
             
@@ -371,7 +369,7 @@ with tab_user:
                 missing_weeks_info.append({"key": w_key, "display": w_display})
         
         if missing_weeks_info:
-            st.warning(f"📌 共有 **{len(missing_weeks_info)}** 週尚未完成，點擊圖框補簽：")
+            st.warning(f"📌 共有 **{len(missing_weeks_info)}** 週尚未完成，點擊按鈕補簽：")
             mid_m = (len(missing_weeks_info) + 1) // 2
             
             mc1, mc2 = st.columns(2)
@@ -390,8 +388,41 @@ with tab_user:
         else:
             st.success("🎉 太棒了！過去每一週的進度皆已完成！")
 
+    # 3. 本週經文移至最下方
+    st.divider()
+    verse_info = get_weekly_verse(current_week_num)
+    st.markdown(f"📖 **本週靈修經文**：{verse_info['ref']}")
+    st.markdown(f"> *{verse_info['verse']}*")
+    if verse_info.get('encouragement'):
+        st.markdown(f"💬 **心靈補給**：{verse_info['encouragement']}")
+
 # ------------------------------------------
-# TAB 2: 後台管理功能
+# TAB 2: 獨立過往讀經進度查詢頁面
+# ------------------------------------------
+with tab_history:
+    st.markdown("### 🗓️ 歷史讀經進度表查詢")
+    
+    col_y, col_w = st.columns([1, 2])
+    with col_y:
+        selected_year = st.selectbox("請選擇年份：", [f"第 {y} 年 (Y{y})" for y in range(PLAN_YEAR, 0, -1)], index=0)
+        target_y_num = int(selected_year.split("第 ")[1].split(" 年")[0])
+    
+    with col_w:
+        max_w_display = current_week_num if target_y_num == PLAN_YEAR else 52
+        week_options = [f"第 {w:02d} 週" for w in range(max_w_display, 0, -1)]
+        selected_w_label = st.selectbox("請選擇週數：", week_options, index=0)
+        target_w_num = int(selected_w_label.replace("第 ", "").replace(" 週", ""))
+        
+    selected_week_key = f"Y{target_y_num}-W{target_w_num:02d}"
+    selected_img_path = get_schedule_image_path(selected_week_key)
+    
+    if selected_img_path:
+        st.image(selected_img_path, caption=f"【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】進度對照表", use_container_width=True)
+    else:
+        st.warning(f"📌 目前尚未上傳【Y{target_y_num}-W{target_w_num:02d}】的進度表圖片。")
+
+# ------------------------------------------
+# TAB 3: 後台統計與管理
 # ------------------------------------------
 with tab_admin:
     st.subheader("🔒 管理者控制台")
@@ -469,7 +500,6 @@ with tab_admin:
             with up_col1:
                 up_year = st.number_input("選擇年份 (如: 1代表第1年, 2代表第2年)：", min_value=1, max_value=4, value=PLAN_YEAR)
             with up_col2:
-                # 預設建議上傳下一個週數 (current_week_num + 1)
                 default_up_week = min(52, current_week_num + 1)
                 up_week = st.number_input("選擇週數 (1~52)：", min_value=1, max_value=52, value=default_up_week)
                 
