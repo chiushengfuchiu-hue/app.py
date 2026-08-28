@@ -30,7 +30,7 @@ INITIAL_MEMBERS = [
     "邱聖富"
 ]
 
-st.set_page_config(page_title="教會4年讀經計畫簽到系統", page_icon="📖", layout="wide")
+st.set_page_config(page_title="四年精讀聖經運動簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
 # 2. 資料庫與邏輯處理
