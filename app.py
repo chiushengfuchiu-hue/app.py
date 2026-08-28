@@ -327,8 +327,13 @@ with tab_user:
 
     st.divider()
 
+    # 初始化手風琴展開狀態 (預設都不展開 None)
+    if "expanded_page" not in st.session_state:
+        st.session_state.expanded_page = None
+
+    # 未選擇會友時：顯示獨佔式風琴選單 (Accordian)
     if st.session_state.current_member is None:
-        st.markdown("### 👇 請點擊包含您名字的圖框：")
+        st.markdown("### 👇 請點擊包含您名字的分區進行簽到：")
         
         valid_members = [
             m for m in member_list 
@@ -346,7 +351,10 @@ with tab_user:
                 names_text = "、".join(chunk)
                 expander_title = f"📦 【第 {page_num} 區】 {names_text}"
                 
-                with st.expander(expander_title, expanded=False):
+                # 只有當前記錄的 expanded_page 等於該區編號時才展開
+                is_open = (st.session_state.expanded_page == page_num)
+                
+                with st.expander(expander_title, expanded=is_open):
                     col1, col2 = st.columns(2)
                     mid = (len(chunk) + 1) // 2
                     
@@ -366,8 +374,11 @@ with tab_user:
                                 st.session_state.current_member = name
                                 st.rerun()
 
+    # 已選擇會友：顯示該會友的個人專頁與補簽按鈕
     else:
         member_name = st.session_state.current_member
+        
+        # 返回按鈕放在最上方
         if st.button("⬅️ 返回選擇名字列表", type="secondary", use_container_width=True):
             st.session_state.current_member = None
             st.rerun()
@@ -378,7 +389,7 @@ with tab_user:
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
         
         if is_signed:
-            st.success(f"🎉 **{member_name}**，您已完成本周讀經進度，願主保守力上加力恩上加恩！")
+            st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
         else:
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
                 add_single_record(current_week_key, member_name)
@@ -423,7 +434,6 @@ with tab_user:
     st.markdown(f"> *{verse_info['verse']}*")
     if verse_info.get('encouragement'):
         st.markdown(f"💬 **心靈補給**：{verse_info['encouragement']}")
-
 # ------------------------------------------
 # TAB 2: 獨立過往讀經進度查詢頁面
 # ------------------------------------------
