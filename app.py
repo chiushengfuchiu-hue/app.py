@@ -342,7 +342,7 @@ df_members = load_members()
 member_list = df_members["member_name"].tolist()
 df_attendance = load_attendance()
 
-st.title(f"📖 讀經進度簽到區（{current_week_display}）")
+st.title(f"📖 最新讀經進度表（{current_week_display}）")
 
 # 主分頁（放大字體，獨立開闢「過往進度查詢」）
 tab_user, tab_history, tab_admin = st.tabs([
