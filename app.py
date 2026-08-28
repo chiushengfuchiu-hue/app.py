@@ -212,7 +212,7 @@ def generate_pivot_report(target_year, max_week):
 st.markdown("""
     <style>
     html, body { max-width: 100vw; overflow-x: hidden; }
-    h1 { font-size: clamp(24px, 6vw, 36px) !important; line-height: 1.3 !important; }
+    h1 { font-size: clamp(26px, 6vw, 38px) !important; line-height: 1.3 !important; }
     
     /* ------------------------------------------
        1. 頁籤（Tab）按鈕卡片化與分色設計
@@ -220,7 +220,7 @@ st.markdown("""
     /* 容器間距與排版 */
     div[data-baseweb="tab-list"] {
         gap: 10px !important;
-        margin-bottom: 15px !important;
+        margin-bottom: 20px !important;
     }
     
     /* 預設頁籤通用卡片外觀 */
@@ -232,11 +232,13 @@ st.markdown("""
         box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
     }
     
-    /* 內文文字放大加粗 */
-    button[data-baseweb="tab"] p {
-        font-size: clamp(20px, 5vw, 26px) !important;
-        font-weight: 800 !important;
-        line-height: 1.2 !important;
+   /* 頁籤內部文字：超大號加粗 */
+    div[data-testid="stTabs"] [role="tab"] p, 
+    div[data-testid="stTabs"] [role="tab"] div {
+        font-size: clamp(22px, 5.5vw, 28px) !important;
+        font-weight: 900 !important;
+        letter-spacing: 1px !important;
+        line-height: 1.3 !important;
     }
     
     /* [Tab 1: 簽到專區 - 綠色系] 未選擇 */
