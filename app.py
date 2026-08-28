@@ -319,6 +319,8 @@ import streamlit.components.v1 as components
 
 import streamlit.components.v1 as components
 
+import streamlit.components.v1 as components
+
 # ------------------------------------------
 # TAB 1: 會友簽到區
 # ------------------------------------------
@@ -329,17 +331,18 @@ with tab_user:
     else:
         st.info(f"📌 目前為【{current_week_display}】簽到。")
 
-    # 1. 錨點放置：專頁橫線上方錨點 (對應圖片二)
+    # 1. 專頁頂部橫線與錨點
     st.markdown("<div id='divider-top-anchor'></div>", unsafe_allow_html=True)
     st.divider()
 
-    # 初始化滾動錨點與當前開啟的分區編號 (預設開啟第 1 區)
+    # 初始化 Session State
     if "scroll_target" not in st.session_state:
         st.session_state.scroll_target = None
+    # 初始值為 None：代表 4 組名字圖框預設全部收合
     if "open_section" not in st.session_state:
-        st.session_state.open_section = 1
+        st.session_state.open_section = None
 
-    # 若有設定滾動目標，觸發 JavaScript 自動精準定位
+    # JavaScript 動態自動滑動定位機制
     if st.session_state.scroll_target:
         target_id = st.session_state.scroll_target
         components.html(
@@ -350,7 +353,7 @@ with tab_user:
                     if (el) {{
                         el.scrollIntoView({{behavior: 'smooth', block: 'start'}});
                     }}
-                }}, 100);
+                }}, 120);
             </script>
             """,
             height=0,
@@ -358,11 +361,11 @@ with tab_user:
         st.session_state.scroll_target = None
 
     # --------------------------------------
-    # 情況 A：未選擇會友（單一分區展開選單）
+    # 情況 A：未選擇會友（顯示 4 組分區圖框）
     # --------------------------------------
     if st.session_state.current_member is None:
         st.markdown("<div id='members-list-top'></div>", unsafe_allow_html=True)
-        st.markdown("### 👇 請點擊包含您名字的分區進行簽到：")
+        st.markdown("### 👇 請點擊您所屬的分區展開名字列表：")
         
         valid_members = [
             m for m in member_list 
@@ -378,12 +381,27 @@ with tab_user:
             
             if chunk:
                 names_text = "、".join(chunk)
+                is_this_open = (st.session_state.open_section == page_num)
                 
-                # 判斷目前這區是否為唯一展開區
-                is_open = (st.session_state.open_section == page_num)
+                # 分區標題圖框：顯示展開/收合圖示
+                toggle_icon = "🔽" if is_this_open else "▶️"
+                header_label = f"{toggle_icon} 📦 【第 {page_num} 區】 {names_text}"
                 
-                # 使用 expander 並給予動態 key，確保一次只會有一個展開
-                with st.expander(f"📦 【第 {page_num} 區】 {names_text}", expanded=is_open):
+                # 點擊分區標題按鈕：進行切換與單一展開控制
+                if st.button(header_label, key=f"sec_toggle_{page_num}", type="secondary", use_container_width=True):
+                    if is_this_open:
+                        st.session_state.open_section = None  # 再次點擊原本展開的區，則全部收合
+                    else:
+                        st.session_state.open_section = page_num  # 開啟新區，舊區自動縮起來
+                        # 設定錨點定位至「標題圖框與第一位姓名中間」
+                        st.session_state.scroll_target = f"sec-header-middle-{page_num}"
+                    st.rerun()
+
+                # 當該分區被點開時，才渲染裡面的姓名按鈕
+                if is_this_open:
+                    # 📍 關鍵錨點：精準放置於【標題圖框】與【第一位姓名】之間
+                    st.markdown(f"<div id='sec-header-middle-{page_num}' style='margin-top: -10px; margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+                    
                     col1, col2 = st.columns(2)
                     mid = (len(chunk) + 1) // 2
                     
@@ -393,8 +411,6 @@ with tab_user:
                             status_icon = "✅" if is_signed else "👤"
                             if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
-                                st.session_state.open_section = page_num # 記錄當前區塊
-                                # 設定錨點定位至橫線上方
                                 st.session_state.scroll_target = "divider-top-anchor"
                                 st.rerun()
 
@@ -404,26 +420,24 @@ with tab_user:
                             status_icon = "✅" if is_signed else "👤"
                             if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
-                                st.session_state.open_section = page_num # 記錄當前區塊
-                                # 設定錨點定位至橫線上方
                                 st.session_state.scroll_target = "divider-top-anchor"
                                 st.rerun()
 
-                # 2. 錨點放置：每一區圖框下方（用於查看個人名字時不需上下滑動）
-                st.markdown(f"<div id='section-bottom-anchor-{page_num}'></div>", unsafe_allow_html=True)
-
     # --------------------------------------
-    # 情況 B：已選擇會友（顯示個人專頁）
+    # 情況 B：已選擇會友（顯示個人簽到專頁）
     # --------------------------------------
     else:
         member_name = st.session_state.current_member
         
-        # 返回按鈕 (橫線下方)
+        # 返回按鈕
         if st.button("⬅️ 返回選擇名字列表", type="secondary", use_container_width=True):
             st.session_state.current_member = None
-            # 返回時自動滑動到上一區圖框下方，不需要再次下滑找名字
+            # 返回時自動自動對焦回剛才點開的那一區（標題與姓名中間）
             current_sec = st.session_state.open_section
-            st.session_state.scroll_target = f"section-bottom-anchor-{current_sec}"
+            if current_sec:
+                st.session_state.scroll_target = f"sec-header-middle-{current_sec}"
+            else:
+                st.session_state.scroll_target = "members-list-top"
             st.rerun()
             
         st.markdown(f"## 👤 {member_name} 的讀經專頁")
