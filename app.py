@@ -419,7 +419,7 @@ with tab_user:
         if is_signed:
             st.success(f"🎉 **{member_name}**，您已完成本周讀經進度，願主保守力上加力恩上加恩！")
         else:
-            if st.button(f"🟢 若完成【{current_week_display}】請點選簽到", type="primary", use_container_width=True):
+            if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
                 add_single_record(current_week_key, member_name)
                 st.toast("🎉 簽到成功！")
                 st.rerun()
