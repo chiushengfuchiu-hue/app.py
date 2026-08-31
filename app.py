@@ -3,10 +3,9 @@ import pandas as pd
 import datetime
 import os
 import logging
+import base64
 import gspread
 from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
 import streamlit.components.v1 as components
 
 # 設定 Logging 紀錄，方便背景除錯
@@ -21,9 +20,7 @@ SCHEDULE_RECORD_FILE = "schedule_records.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
 SCHEDULE_DIR = "schedules_img"
 
-# 優先讀取 secrets，若無則使用預設值
 ADMIN_PASSWORD = st.secrets.get("admin_password", "11190928")
-
 PLAN_YEAR = 2
 
 os.makedirs(SCHEDULE_DIR, exist_ok=True)
@@ -42,8 +39,26 @@ INITIAL_MEMBERS = [
 st.set_page_config(page_title="四年精讀聖經運動簽到系統", page_icon="📖", layout="wide")
 
 # ==========================================
-# 2. 資料庫與邏輯處理
+# 2. 輔助與 GCP 憑證函式
 # ==========================================
+def get_gcp_credentials():
+    if "gcp_service_account" not in st.secrets:
+        return None
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    if "private_key" in creds_dict:
+        pk = creds_dict["private_key"].replace("\\n", "\n")
+        if not pk.startswith("-----BEGIN PRIVATE KEY-----"):
+            pk = "-----BEGIN PRIVATE KEY-----\n" + pk
+        if not pk.endswith("-----END PRIVATE KEY-----"):
+            pk = pk + "\n-----END PRIVATE KEY-----"
+        creds_dict["private_key"] = pk.strip()
+
+    return Credentials.from_service_account_info(creds_dict, scopes=scope)
+
 def load_attendance():
     if os.path.exists(ATTENDANCE_FILE):
         try:
@@ -72,19 +87,9 @@ def delete_single_record(week_key, member_name):
 
 def sync_to_gsheet_async(new_rows_list):
     try:
-        if "gcp_service_account" not in st.secrets:
+        creds = get_gcp_credentials()
+        if not creds:
             return
-        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        if "private_key" in creds_dict:
-            pk = creds_dict["private_key"].replace("\\n", "\n")
-            if not pk.startswith("-----BEGIN PRIVATE KEY-----"):
-                pk = "-----BEGIN PRIVATE KEY-----\n" + pk
-            if not pk.endswith("-----END PRIVATE KEY-----"):
-                pk = pk + "\n-----END PRIVATE KEY-----"
-            creds_dict["private_key"] = pk.strip()
-
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
         sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
         sheet = client.open(sheet_name).sheet1
@@ -92,49 +97,83 @@ def sync_to_gsheet_async(new_rows_list):
     except Exception as e:
         logging.error(f"Google Sheets 同步失敗: {e}")
 
-def upload_img_to_gdrive(file_path, file_name):
-    """同步上傳圖片檔至 Google Drive 指定資料夾"""
+# ==========================================
+# 方案一：進度表圖片 Base64 備份至 Google Sheet
+# ==========================================
+def backup_schedule_to_gsheet(file_path, week_key):
+    """將圖片轉換為 Base64 字串並備份至 Google Sheet 中的 Schedule_Backup 分頁"""
     try:
-        if "gcp_service_account" not in st.secrets:
-            st.error("Secrets 中找不到 gcp_service_account 設定！")
+        creds = get_gcp_credentials()
+        if not creds:
             return
+        client = gspread.authorize(creds)
+        sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+        sh = client.open(sheet_name)
         
-        scope = ["https://www.googleapis.com/auth/drive"]
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        if "private_key" in creds_dict:
-            pk = creds_dict["private_key"].replace("\\n", "\n")
-            if not pk.startswith("-----BEGIN PRIVATE KEY-----"):
-                pk = "-----BEGIN PRIVATE KEY-----\n" + pk
-            if not pk.endswith("-----END PRIVATE KEY-----"):
-                pk = pk + "\n-----END PRIVATE KEY-----"
-            creds_dict["private_key"] = pk.strip()
+        # 取得或新增 Schedule_Backup 工作表
+        try:
+            ws = sh.worksheet("Schedule_Backup")
+        except Exception:
+            ws = sh.add_worksheet(title="Schedule_Backup", rows="100", cols="3")
+            ws.append_row(["week_key", "base64_data", "updated_at"])
 
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        drive_service = build('drive', 'v3', credentials=creds)
+        with open(file_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
 
-        # 取得 Folder ID 並清理字串
-        folder_id = st.secrets.get("drive_folder_id", None)
-        if folder_id and "folders/" in folder_id:
-            folder_id = folder_id.split("folders/")[1].split("?")[0]
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        file_metadata = {'name': file_name}
-        if folder_id:
-            file_metadata['parents'] = [folder_id]
+        # 搜尋是否已經備份過該週，有則更新，無則新增
+        try:
+            cell = ws.find(week_key)
+            if cell:
+                ws.update_cell(cell.row, 2, encoded_string)
+                ws.update_cell(cell.row, 3, now_str)
+            else:
+                ws.append_row([week_key, encoded_string, now_str])
+        except Exception:
+            ws.append_row([week_key, encoded_string, now_str])
 
-        media = MediaFileUpload(file_path, resumable=True)
-        
-        # 關鍵修正：加入 supportsAllDrives=True，確保檔案能正常上傳至共用資料夾
-        drive_service.files().create(
-            body=file_metadata, 
-            media_body=media, 
-            fields='id',
-            supportsAllDrives=True
-        ).execute()
-        
-        logging.info(f"圖片 {file_name} 已成功同步至 Google Drive")
+        logging.info(f"進度表 {week_key} 已成功同步備份至 Google Sheet！")
     except Exception as e:
-        logging.error(f"Google Drive 圖片上傳失敗: {e}")
-        st.error(f"⚠️ Google Drive 同步失敗原因: {e}")
+        logging.error(f"Google Sheet 進度表備份失敗: {e}")
+        st.error(f"⚠️ 進度表備份至 Google Sheet 失敗: {e}")
+
+def restore_schedules_from_gsheet():
+    """啟動時自動檢查：如果本地缺少圖片，自動從 Google Sheet 還原"""
+    try:
+        creds = get_gcp_credentials()
+        if not creds:
+            return
+        client = gspread.authorize(creds)
+        sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+        sh = client.open(sheet_name)
+        
+        try:
+            ws = sh.worksheet("Schedule_Backup")
+        except Exception:
+            return
+
+        records = ws.get_all_records()
+        df_s = pd.read_csv(SCHEDULE_RECORD_FILE) if os.path.exists(SCHEDULE_RECORD_FILE) else pd.DataFrame(columns=["week_key", "image_path"])
+
+        for row in records:
+            w_key = str(row.get("week_key", "")).strip()
+            b64_str = row.get("base64_data", "")
+            if w_key and b64_str:
+                file_path = os.path.join(SCHEDULE_DIR, f"{w_key}.png")
+                if not os.path.exists(file_path):
+                    with open(file_path, "wb") as f:
+                        f.write(base64.b64decode(b64_str))
+                    
+                    df_s = df_s[df_s["week_key"] != w_key]
+                    df_s = pd.concat([df_s, pd.DataFrame([{"week_key": w_key, "image_path": file_path}])], ignore_index=True)
+
+        df_s.to_csv(SCHEDULE_RECORD_FILE, index=False, encoding="utf-8-sig")
+    except Exception as e:
+        logging.error(f"從 Google Sheet 還原圖片失敗: {e}")
+
+# 程式啟動時自動執行備份還原檢查
+restore_schedules_from_gsheet()
 
 def add_single_record(week_key, member_name):
     df = load_attendance()
@@ -203,12 +242,12 @@ def save_schedule_record(week_key, uploaded_file):
     file_name = f"{week_key}.{file_extension}"
     file_path = os.path.join(SCHEDULE_DIR, file_name)
     
-    # 1. 本地儲存
+    # 1. 儲存在本地伺服器
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
-        
-    # 2. 同步上傳至 Google Drive 雲端資料夾
-    upload_img_to_gdrive(file_path, file_name)
+
+    # 2. 備份圖檔至 Google Sheet 試算表
+    backup_schedule_to_gsheet(file_path, week_key)
 
     # 3. 更新本地紀錄 CSV
     df_s = pd.read_csv(SCHEDULE_RECORD_FILE) if os.path.exists(SCHEDULE_RECORD_FILE) else pd.DataFrame(columns=["week_key", "image_path"])
@@ -645,7 +684,8 @@ with tab_admin:
             if uploaded_img is not None:
                 if st.button("⬆️ 儲存並發布此進度表"):
                     save_schedule_record(up_week_key, uploaded_img)
-                    st.info("處理完畢！請檢視上方是否有紅色錯誤訊息。若無錯誤代表上傳成功。")
+                    st.success(f"🎉【{up_week_key}】進度表圖片已成功儲存並同步備份至 Google Sheet！")
+                    st.rerun()
 
             cur_img = get_schedule_image_path(up_week_key)
             if cur_img:
