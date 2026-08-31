@@ -643,7 +643,7 @@ with tab_history:
     )
 
     with st.spinner("正在從雲端硬碟導讀資料夾抓取檔案中..."):
-        doc_content = fetch_docx_content(target_w_num)
+        doc_content = fetch_docx_content(target_w_num, target_date=selected_day)
 
     if not doc_content:
         st.info(f"💡 雲端硬碟導讀資料夾中尚未找到第 {target_w_num} 週的 Word 導讀檔案。")
