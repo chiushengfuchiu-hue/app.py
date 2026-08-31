@@ -497,8 +497,8 @@ with tab_user:
                 st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
             else:
                 # 點擊後開啟確認彈窗，帶入正確的變數
-            if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
-                confirm_checkin_dialog(member_name, current_week_display, current_week_key, missing_weeks_info)
+                if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
+                    confirm_checkin_dialog(member_name, current_week_display, current_week_key, missing_weeks_info)
 
             # 點擊按鈕後不直接簽到，而是開啟確認視窗
             if st.button(f"按此完成 {current_week} 簽到", type="primary"):
