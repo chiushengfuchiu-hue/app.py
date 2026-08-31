@@ -6,6 +6,8 @@ import logging
 import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 # 設定 Logging 紀錄，方便背景除錯
 logging.basicConfig(level=logging.INFO)
