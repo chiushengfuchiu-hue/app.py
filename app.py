@@ -9,6 +9,39 @@ import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
 from googleapiclient.discovery import build
+import google.generativeai as genai
+from PIL import Image
+import requests
+import io
+
+def ai_detect_books_from_image(image_url):
+    """利用 Gemini 視覺模型自動辨識進度表圖片中出現的經卷名稱"""
+    try:
+        if not image_url:
+            return []
+        
+        # 下載圖片
+        response = requests.get(image_url)
+        img = Image.open(io.BytesIO(response.content))
+        
+        # 初始化 Gemini 視覺辨識（使用系統內建 API 金鑰）
+        # 讓 AI 回傳這張進度表涵蓋了哪些聖經書卷名稱
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = "請仔細閱讀這張聖經讀經進度表圖片，找出這張表所涵蓋的所有聖經書卷名稱（例如創世記、約珥書、阿摩司書等）。請直接條列出書卷名稱即可，不要有多餘的字句。"
+        
+        result = model.generate_content([img, prompt])
+        text_result = result.text.strip()
+        
+        # 根據系統中的 BOOK_CODE_MAP 比對哪些書卷名稱出現在 AI 的辨識結果中
+        detected_books = []
+        for book_name in BOOK_CODE_MAP.keys():
+            if book_name in text_result:
+                detected_books.append(book_name)
+                
+        return detected_books
+    except Exception as e:
+        print(f"自動辨識圖片失敗: {e}")
+        return []
 
 # ==========================================
 # 簽到二次確認彈窗
@@ -634,25 +667,31 @@ with tab_history:
         selected_w_label = st.selectbox("請選擇週數：", week_options, index=0, key="hist_week_sel")
         target_w_num = int(selected_w_label.replace("第 ", "").replace(" 週", ""))
 
+# 1. 先取得當週進度表圖片網址
     history_img_url = get_gdrive_image_url(target_y_num, target_w_num)
 
     if history_img_url:
         st.image(history_img_url, caption=f"【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】進度對照表", use_container_width=True)
+        
+        # 2. 自動透過 AI 辨識圖片中的經卷
+        with st.spinner("🤖 正在智慧辨識進度表圖片中的經文與經卷..."):
+            auto_detected_books = ai_detect_books_from_image(history_img_url)
     else:
         st.warning(f"📌 雲端硬碟中尚未找到【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】的進度表圖片。")
+        auto_detected_books = []
 
     st.divider()
     
-    # 針對第 36 週（或使用者可自訂或由系統辨識進度所含的經卷）設定預設抓取經卷
-    # 以第 36 週為例，包含「約珥書」與「阿摩司書」
-    default_books_to_fetch = ["約珥書", "阿摩司書"] if target_w_num == 36 else ["創世記"]
+    # 如果 AI 有成功辨識出經卷，就直接帶入；若無則給預設值
+    default_books = auto_detected_books if auto_detected_books else ["創世記"]
     
-    st.markdown(f"### 📖 第 {target_y_num} 年 - 第 {target_w_num:02d} 週 導讀經文對照檢視")
+    st.markdown(f"### 📖 第 {target_y_num} 年 - 第 {target_w_num:02d} 週 導讀經文自動對應檢視")
     
+    # 讓使用者可以確認或手動微調 AI 辨識的結果
     selected_books = st.multiselect(
-        "系統自動辨識或手動選擇本週對應的經卷：",
+        "✨ AI 已自動辨識本週對應經卷（可隨時手動增減）：",
         options=list(BOOK_CODE_MAP.keys()),
-        default=default_books_to_fetch,
+        default=default_books,
         key=f"books_sel_{target_y_num}_{target_w_num}"
     )
 
