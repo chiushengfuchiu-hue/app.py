@@ -58,9 +58,11 @@ def get_gcp_credentials():
 # 3. Google Drive 動態抓取圖片網址
 # ==========================================
 @st.cache_data(ttl=300)
-def get_gdrive_image_url(week_num):
+@st.cache_data(ttl=300)
+def get_gdrive_image_url(year_num, week_num):
     """
-    根據週數（例如 34），自動比對 Google Drive 資料夾中包含 '第34周' 或 '第34週' 的圖片
+    根據年份與週數（例如 year_num=1, week_num=10），
+    自動計算西元年（如 Y1->2025, Y2->2026），並精準搜尋對應檔名。
     """
     try:
         creds = get_gcp_credentials()
@@ -77,10 +79,19 @@ def get_gdrive_image_url(week_num):
         if "folders/" in folder_id:
             folder_id = folder_id.split("folders/")[1].split("?")[0]
 
+        # 根據年份代碼轉換為實際西元年份 (假設 Y2 為 2026 年，Y1 則為 2025 年)
+        actual_year = 2026 - (PLAN_YEAR - year_num)
+
+        # 建立精準搜尋條件 (範例：包含 '2025' 且包含 '第10周')
+        search_year = str(actual_year)
         search_term_1 = f"第{week_num}周"
         search_term_2 = f"第{week_num}週"
 
-        query = f"'{folder_id}' in parents and (name contains '{search_term_1}' or name contains '{search_term_2}') and trashed = false"
+        query = (
+            f"'{folder_id}' in parents and name contains '{search_year}' "
+            f"and (name contains '{search_term_1}' or name contains '{search_term_2}') "
+            f"and trashed = false"
+        )
         
         results = drive_service.files().list(
             q=query, 
@@ -95,7 +106,7 @@ def get_gdrive_image_url(week_num):
             return f"https://lh3.googleusercontent.com/d/{file_id}"
             
     except Exception as e:
-        logging.error(f"從 Google Drive 搜尋第 {week_num} 週圖片失敗: {e}")
+        logging.error(f"從 Google Drive 搜尋 {year_num} 年第 {week_num} 週圖片失敗: {e}")
     
     return None
 
@@ -331,7 +342,7 @@ tab_user, tab_history, tab_admin = st.tabs([
 # TAB 1: 會友簽到區
 # ------------------------------------------
 with tab_user:
-    current_img_url = get_gdrive_image_url(current_week_num)
+    current_img_url = get_gdrive_image_url(PLAN_YEAR, current_week_num)
     if current_img_url:
         st.image(current_img_url, caption=f"【最新進度】{current_week_display}", use_container_width=True)
     else:
@@ -502,7 +513,7 @@ with tab_history:
         selected_w_label = st.selectbox("請選擇週數：", week_options, index=0)
         target_w_num = int(selected_w_label.replace("第 ", "").replace(" 週", ""))
 
-    history_img_url = get_gdrive_image_url(target_w_num)
+    history_img_url = get_gdrive_image_url(target_y_num, target_w_num)
 
     if history_img_url:
         st.image(history_img_url, caption=f"【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】進度對照表", use_container_width=True)
