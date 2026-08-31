@@ -55,6 +55,25 @@ GUIDE_FOLDER_ID = "1-RkVxCZy9wS_2X6Huw5p2mWhv1b6l0HM"
 ADMIN_PASSWORD = st.secrets.get("admin_password", "11190928")
 PLAN_YEAR = 2
 
+# 66 卷經書與雲端硬碟編號對照表
+BOOK_CODE_MAP = {
+    "創世記": "01", "出埃及記": "02", "利未記": "03", "民數記": "04", "申命記": "05",
+    "約書亞記": "06", "士師記": "07", "路得記": "08", "撒母耳記上": "09", "撒母耳記下": "10",
+    "列王紀上": "11", "列王紀下": "12", "歷代志上": "13", "歷代志下": "14", "以斯拉記": "15",
+    "尼希米記": "16", "以斯帖記": "17", "約伯記": "18", "詩篇": "19", "箴言": "20",
+    "傳道書": "21", "雅歌": "22", "以賽亞書": "23", "耶利米書": "24", "耶利米哀歌": "25",
+    "以西結書": "26", "但以理書": "27", "何西阿書": "28", "約珥書": "29", "阿摩司書": "30",
+    "俄巴底亞書": "31", "約拿書": "32", "彌迦書": "33", "西番雅": "34", "哈該書": "35",
+    "撒迦利亞書": "36", "瑪拉基書": "37", 
+    "馬太福音": "38", "馬可福音": "39", "路加福音": "40", "約翰福音": "41", "使徒行傳": "42",
+    "羅馬書": "43", "哥林多前書": "44", "哥林多後書": "45", "加拉太書": "46", "以弗所書": "47",
+    "腓立比書": "48", "歌羅西書": "49", "帖撒羅尼迦前書": "50", "帖撒羅尼迦後書": "51",
+    "提摩太前書": "52", "提摩太後書": "53", "提多書": "54", "腓利門書": "55", "希伯來書": "56",
+    "雅各書": "57", "彼得前書": "58", "彼得後書": "59", "約翰一書": "60", "約翰二書": "61",
+    "約翰三書": "62", "猶大書": "63", "啟示錄": "64"
+    # 可依實際 65, 66 卷繼續擴充
+}
+
 INITIAL_MEMBERS = [
     "周寶燕", "曾笑", "黃然玉", "吳妃玉", "楊游美麗", 
     "翁淑美", "石美莎", "單麗蘭", "鄭富美", "李鶯芳", 
@@ -99,8 +118,8 @@ def get_drive_service():
     return build("drive", "v3", credentials=scoped_creds)
 
 @st.cache_data(ttl=3600)
-def fetch_docx_content(year_num, week_num):
-    """根據年份與週數，從雲端硬碟導讀資料夾精準讀取對應的 Word 檔案經文與導讀內容"""
+def fetch_docx_content_by_books(book_names):
+    """根據指定的經卷名稱清單（例如 ['約珥書', '阿摩司書']），自動從雲端硬碟對應編號抓取檔案並合併內容"""
     try:
         service = get_drive_service()
         if not service:
@@ -110,26 +129,37 @@ def fetch_docx_content(year_num, week_num):
         results = service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
         files = results.get("files", [])
         
-        target_file = None
-        # 建立嚴謹的搜尋關鍵字，例如第36週、第36周、W36
-        search_terms = [f"第{week_num}週", f"第{week_num}周", f"W{week_num:02d}"]
+        combined_text = []
         
-        for f in files:
-            fname = f["name"]
-            # 檢查檔名是否包含指定的週數關鍵字
-            if any(term in fname for term in search_terms):
-                target_file = f
-                break
-        
-        if not target_file:
-            return f"💡 雲端資料夾中找不到符合「第 {week_num} 週」（或 W{week_num:02d}）的導讀 Word 檔案，請確認雲端檔名命名格式。"
-
-        request = service.files().get_media(fileId=target_file["id"])
-        file_bytes = io.BytesIO(request.execute())
-        
-        doc = docx.Document(file_bytes)
-        full_text = [p.text for p in doc.paragraphs if p.text.strip() != ""]
-        return "\n\n".join(full_text)
+        for b_name in book_names:
+            # 找出對應的經卷編號前綴（例如 29, 30）
+            matched_code = None
+            for key, code in BOOK_CODE_MAP.items():
+                if key in b_name:
+                    matched_code = code
+                    break
+            
+            target_file = None
+            for f in files:
+                fname = f["name"]
+                # 如果有對應編號（如以 "29" 或 "29_" 開頭），優先匹配；否則比對名稱
+                if matched_code and (fname.startswith(matched_code) or f"{matched_code}_" in fname or f"{matched_code}." in fname):
+                    target_file = f
+                    break
+                elif b_name in fname:
+                    target_file = f
+                    break
+            
+            if target_file:
+                request = service.files().get_media(fileId=target_file["id"])
+                file_bytes = io.BytesIO(request.execute())
+                doc = docx.Document(file_bytes)
+                file_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip() != ""])
+                combined_text.append(f"📌 【經卷導讀：{b_name} (對應檔案: {target_file['name']})】\n\n{file_text}")
+            else:
+                combined_text.append(f"💡 雲端資料夾中找不到與「{b_name}」對應的導讀 Word 檔案。")
+                
+        return "\n\n" + "="*40 + "\n\n".join(combined_text)
     except Exception as e:
         return f"⚠️ 讀取導讀檔案時發生錯誤：{e}"
 
@@ -612,7 +642,19 @@ with tab_history:
         st.warning(f"📌 雲端硬碟中尚未找到【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】的進度表圖片。")
 
     st.divider()
-    st.markdown(f"### 📖 第 {target_y_num} 年 - 第 {target_w_num:02d} 週 導讀經文與內容閱覽")
+    
+    # 針對第 36 週（或使用者可自訂或由系統辨識進度所含的經卷）設定預設抓取經卷
+    # 以第 36 週為例，包含「約珥書」與「阿摩司書」
+    default_books_to_fetch = ["約珥書", "阿摩司書"] if target_w_num == 36 else ["創世記"]
+    
+    st.markdown(f"### 📖 第 {target_y_num} 年 - 第 {target_w_num:02d} 週 導讀經文對照檢視")
+    
+    selected_books = st.multiselect(
+        "系統自動辨識或手動選擇本週對應的經卷：",
+        options=list(BOOK_CODE_MAP.keys()),
+        default=default_books_to_fetch,
+        key=f"books_sel_{target_y_num}_{target_w_num}"
+    )
 
     view_mode = st.radio(
         "請選擇檢視模式：",
@@ -621,10 +663,10 @@ with tab_history:
         key="hist_view_mode"
     )
 
-    with st.spinner(f"正在從雲端硬碟抓取第 {target_w_num:02d} 週的導讀經文檔案中..."):
-        full_doc_content = fetch_docx_content(target_y_num, target_w_num)
+    with st.spinner("正在從雲端硬碟對應編號抓取經卷導讀檔案中..."):
+        full_doc_content = fetch_docx_content_by_books(selected_books)
 
-    if not full_doc_content or "⚠️" in full_doc_content or "💡" in full_doc_content:
+    if not full_doc_content or "⚠️" in full_doc_content:
         st.warning(full_doc_content if full_doc_content else "💡 尚未找到對應的導讀檔案。")
     else:
         display_text = full_doc_content
@@ -663,9 +705,9 @@ with tab_history:
                     chunk_size_p = max(1, len(paragraphs) // 7)
                     start_idx = (target_day_num - 1) * chunk_size_p
                     end_idx = start_idx + chunk_size_p if target_day_num < 7 else len(paragraphs)
-                    display_text = f"💡 [提示：此檔案未發現明確 Day 標題，系統已自動為您擷取第 {target_day_num} 天對應段落]\n\n" + "\n\n".join(paragraphs[start_idx:end_idx])
+                    display_text = f"💡 [提示：系統已自動為您擷取第 {target_day_num} 天對應段落]\n\n" + "\n\n".join(paragraphs[start_idx:end_idx])
                 else:
-                    display_text = f"💡 [提示：此檔案內容較短，以下為完整內容對照第 {target_day_num} 天]\n\n" + full_doc_content
+                    display_text = full_doc_content
 
         # 具備獨立捲軸的文字閱覽框
         st.markdown(
