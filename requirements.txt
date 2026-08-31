@@ -1,6 +1,6 @@
 streamlit
 pandas
-docx
+python-docx
 gspread
 google-auth
 google-api-python-client
