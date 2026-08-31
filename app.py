@@ -232,7 +232,7 @@ ATTENDANCE_FILE = "attendance_records.csv"
 SCHEDULE_DIR = "schedules_img"
 ADMIN_PASSWORD = "11190928"
 
-PLAN_YEAR = 2 
+PLAN_YEAR = 2
 
 os.makedirs(SCHEDULE_DIR, exist_ok=True)
 
