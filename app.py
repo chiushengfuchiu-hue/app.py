@@ -55,14 +55,12 @@ def get_gcp_credentials():
     return Credentials.from_service_account_info(creds_dict, scopes=scope)
 
 # ==========================================
-# 3. Google Drive 動態抓取圖片網址
+# 3. Google Drive 動態抓取圖片網址 (帶年份)
 # ==========================================
-@st.cache_data(ttl=300)
 @st.cache_data(ttl=300)
 def get_gdrive_image_url(year_num, week_num):
     """
-    根據年份與週數（例如 year_num=1, week_num=10），
-    自動計算西元年（如 Y1->2025, Y2->2026），並精準搜尋對應檔名。
+    根據年份與週數，精準搜尋 Google Drive 中的對應圖檔
     """
     try:
         creds = get_gcp_credentials()
@@ -79,10 +77,7 @@ def get_gdrive_image_url(year_num, week_num):
         if "folders/" in folder_id:
             folder_id = folder_id.split("folders/")[1].split("?")[0]
 
-        # 根據年份代碼轉換為實際西元年份 (假設 Y2 為 2026 年，Y1 則為 2025 年)
         actual_year = 2026 - (PLAN_YEAR - year_num)
-
-        # 建立精準搜尋條件 (範例：包含 '2025' 且包含 '第10周')
         search_year = str(actual_year)
         search_term_1 = f"第{week_num}周"
         search_term_2 = f"第{week_num}週"
@@ -106,7 +101,7 @@ def get_gdrive_image_url(year_num, week_num):
             return f"https://lh3.googleusercontent.com/d/{file_id}"
             
     except Exception as e:
-        logging.error(f"從 Google Drive 搜尋 {year_num} 年第 {week_num} 週圖片失敗: {e}")
+        logging.error(f"從 Google Drive 搜尋 Y{year_num}-W{week_num} 圖片失敗: {e}")
     
     return None
 
@@ -142,19 +137,25 @@ def sync_to_gsheet_async(new_rows_list):
     except Exception as e:
         logging.error(f"Google Sheets 同步失敗: {e}")
 
-def add_single_record(week_key, member_name):
+def add_batch_records(records_list):
+    """批量新增簽到紀錄 (避免多次讀寫檔案)"""
     df = load_attendance()
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    week_key = str(week_key).strip()
-    member_name = str(member_name).strip()
-
-    match = df[(df["week_key"] == week_key) & (df["member_name"] == member_name)]
-    if match.empty:
-        new_row = pd.DataFrame([{"week_key": week_key, "member_name": member_name, "timestamp": now_str}])
-        df = pd.concat([df, new_row], ignore_index=True)
+    new_rows = []
+    
+    for week_key, member_name in records_list:
+        week_key = str(week_key).strip()
+        member_name = str(member_name).strip()
+        match = df[(df["week_key"] == week_key) & (df["member_name"] == member_name)]
+        if match.empty:
+            new_rows.append({"week_key": week_key, "member_name": member_name, "timestamp": now_str})
+            
+    if new_rows:
+        new_df = pd.DataFrame(new_rows)
+        df = pd.concat([df, new_df], ignore_index=True)
         save_attendance(df)
-        sync_to_gsheet_async([[week_key, member_name, now_str]])
-    return True
+        gsheet_rows = [[r["week_key"], r["member_name"], r["timestamp"]] for r in new_rows]
+        sync_to_gsheet_async(gsheet_rows)
 
 def delete_single_record(week_key, member_name):
     df = load_attendance()
@@ -442,6 +443,18 @@ with tab_user:
             st.rerun()
 
         st.markdown(f"## 👤 {member_name} 的讀經專頁")
+        
+        # 取得該會友目前已簽到的所有週數
+        signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist()
+        
+        # 找出過往未完成的週數資訊
+        missing_weeks_info = []
+        for w in range(1, current_week_num):
+            w_key = f"Y{PLAN_YEAR}-W{w:02d}"
+            w_display = f"第 {PLAN_YEAR} 年 - 第 {w:02d} 週"
+            if w_key not in signed_weeks:
+                missing_weeks_info.append({"key": w_key, "display": w_display, "week_num": w})
+
         st.markdown(f"### 📍 【本週進度】{current_week_display}")
 
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
@@ -450,44 +463,49 @@ with tab_user:
             st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
         else:
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
-                add_single_record(current_week_key, member_name)
-                st.toast("🎉 簽到成功！")
+                # 準備要新增的紀錄：包含當週 + 所有過往尚未簽到的週數（自動補簽）
+                records_to_add = [(current_week_key, member_name)]
+                for m_item in missing_weeks_info:
+                    records_to_add.append((m_item["key"], member_name))
+                
+                add_batch_records(records_to_add)
+
+                if missing_weeks_info:
+                    st.toast(f"🎉 簽到成功！並已自動為您補齊過往 {len(missing_weeks_info)} 週進度！")
+                else:
+                    st.toast("🎉 簽到成功！")
+                
                 st.session_state.scroll_target = "divider-top-anchor"
                 st.rerun()
 
         st.divider()
-        st.markdown("### 🟡 【補簽未完成進度】")
-
-        signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist()
-
-        missing_weeks_info = []
-        for w in range(1, current_week_num):
-            w_key = f"Y{PLAN_YEAR}-W{w:02d}"
-            w_display = f"第 {PLAN_YEAR} 年 - 第 {w:02d} 週"
-            if w_key not in signed_weeks:
-                missing_weeks_info.append({"key": w_key, "display": w_display, "week_num": w})
+        st.markdown("### 🟡 【過往進度補簽狀態】")
 
         if missing_weeks_info:
-            st.warning(f"📌 共有 **{len(missing_weeks_info)}** 週尚未完成，點擊按鈕補簽：")
+            if not is_signed:
+                st.warning(f"⚠️ 您尚有 **{len(missing_weeks_info)}** 週過往進度尚未簽到，點擊以下按鈕可單獨補簽：")
+            else:
+                st.info(f"📌 您先前尚有 **{len(missing_weeks_info)}** 週紀錄未補齊，可點擊下方按鈕單獨補簽：")
+
             mid_m = (len(missing_weeks_info) + 1) // 2
 
             mc1, mc2 = st.columns(2)
             with mc1:
                 for item in missing_weeks_info[:mid_m]:
                     if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}_c1", type="secondary", use_container_width=True):
-                        add_single_record(item["key"], member_name)
+                        add_batch_records([(item["key"], member_name)])
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
                         st.session_state.scroll_target = "divider-top-anchor"
                         st.rerun()
             with mc2:
                 for item in missing_weeks_info[mid_m:]:
                     if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}_c2", type="secondary", use_container_width=True):
-                        add_single_record(item["key"], member_name)
+                        add_batch_records([(item["key"], member_name)])
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
                         st.session_state.scroll_target = "divider-top-anchor"
                         st.rerun()
         else:
-            st.success("🎉 太棒了！過去每一週的進度皆已完成！")
+            st.success("🎉 過往進度已全部完成，無需補簽！")
 
     st.divider()
     verse_info = get_weekly_verse(current_week_num)
