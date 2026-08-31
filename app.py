@@ -9,7 +9,23 @@ import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
 from googleapiclient.discovery import build
+import re
 
+def extract_daily_devotional(full_text: str, target_date: str) -> str:
+    """
+    根據目標日期（例如 "2026.8.30"），從整篇 Word 文字中抓出對應的導讀內容。
+    """
+    # 組出對應的正規表達式標記，例如抓取 [DATE:2026.8.30] 到 [END_DATE] 之間的內容
+    pattern = rf"\[DATE:{target_date}\](.*?)(?=\[END_DATE\])"
+    
+    # re.DOTALL 讓換行符號 (.) 也能被匹配到
+    match = re.search(pattern, full_text, re.DOTALL)
+    
+    if match:
+        # 回傳抓到的內容，並把前後多餘的空白或換行清掉
+        return match.group(1).strip()
+    else:
+        return f"目前找不到 {target_date} 的專屬導讀內容，以下顯示完整內容：\n\n{full_text}"
 # ==========================================
 # 簽到二次確認彈窗
 # ==========================================
@@ -98,9 +114,12 @@ def get_drive_service():
     scoped_creds = creds.with_scopes(scopes)
     return build("drive", "v3", credentials=scoped_creds)
 
+import io
+import re  # 確保有引入 re 模組
+
 @st.cache_data(ttl=3600)
-def fetch_docx_content(week_num):
-    """從雲端硬碟導讀資料夾讀取對應週數的 Word 檔案內容"""
+def fetch_docx_content(week_num, target_date=None):
+    """從雲端硬碟導讀資料夾讀取對應週數的 Word 檔案內容，並可指定日期過濾"""
     try:
         service = get_drive_service()
         if not service:
@@ -126,7 +145,21 @@ def fetch_docx_content(week_num):
         
         doc = docx.Document(file_bytes)
         full_text = [p.text for p in doc.paragraphs if p.text.strip() != ""]
-        return "\n\n".join(full_text)
+        combined_text = "\n\n".join(full_text)
+        
+        # --- 新增：如果有指定 target_date，就利用錨點切出當天內容 ---
+        if target_date:
+            # 尋找 [DATE:目標日期] 到 [END_DATE] 之間的內容
+            pattern = rf"\[DATE:{target_date}\](.*?)(?=\[END_DATE\])"
+            match = re.search(pattern, combined_text, re.DOTALL)
+            if match:
+                return match.group(1).strip()
+            else:
+                return f"⚠️ 找不到日期為 {target_date} 的導讀內容。"
+        
+        # 如果沒有指定日期，就回傳整篇（保持原本相容性）
+        return combined_text
+        
     except Exception as e:
         return f"⚠️ 讀取導讀檔案時發生錯誤：{e}"
 
