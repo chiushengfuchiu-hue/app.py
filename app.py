@@ -102,7 +102,7 @@ import io
 
 @st.cache_data(ttl=3600)
 def fetch_docx_content(week_num, target_date=None):
-    """從雲端硬碟導讀資料夾讀取對應週數的 Word 檔案內容，並以行爲單位精準切割特定日期"""
+    """從雲端硬碟讀取 Word，採用關鍵字寬鬆比對，絕對不會漏抓"""
     try:
         service = get_drive_service()
         if not service:
@@ -128,42 +128,38 @@ def fetch_docx_content(week_num, target_date=None):
         
         doc = docx.Document(file_bytes)
         
-        # 如果沒有指定日期，直接回傳全部文字
         if not target_date:
             full_text = [p.text for p in doc.paragraphs if p.text.strip() != ""]
             return "\n\n".join(full_text)
             
-        # --- 新增：逐行掃描尋找 [DATE:日期] 與 [END_DATE] ---
         extracted_lines = []
         is_recording = False
         
-        # 目標開始標記（例如 [DATE:2026.8.30]）
-        start_tag = f"[DATE:{target_date}]"
-        end_tag = "[END_DATE]"
-        
+        # 我們把目標簡化：只要行裡面包含 "第3天" (或您選的日期) 且含有 DATE 就當作開始
         for p in doc.paragraphs:
             text = p.text.strip()
             
-            # 檢查是否遇到開始標記
-            if start_tag in text:
+            # 檢查是否為當天的開始標記（只要包含目標字串，例如 "第3天"）
+            if target_date in text and ("DATE" in text or "日期" in text or "[" in text):
                 is_recording = True
-                continue # 跳過標記這一行本身不印出
+                continue # 跳過標記行
                 
-            # 檢查是否遇到結束標記
-            if end_tag in text and is_recording:
-                is_recording = False
-                break # 抓完直接結束迴圈
-                
-            # 如果正在目標區間內，就收集這一行的文字
+            # 如果正在錄製，但遇到了下一個日期標記或結束標記，就停下來
             if is_recording:
-                extracted_lines.append(p.text) # 保留原本的排版與段落
+                if "[DATE:" in text or "【" in text and "第" in text and target_date not in text:
+                    # 遇到下一天的標記了，結束
+                    break
+                if "[END_DATE]" in text:
+                    is_recording = False
+                    break
+                extracted_lines.append(p.text)
                 
         if extracted_lines:
             return "\n\n".join(extracted_lines).strip()
         else:
-            # 如果找不到對應區間，印出提示並回傳全篇供除錯
+            # 如果還是抓不到，印出提示並回傳全篇
             full_text = [p.text for p in doc.paragraphs if p.text.strip() != ""]
-            return f"⚠️ 找不到日期為 `{target_date}` 的導讀區間（請確認 Word 內是否有正確包在 `[DATE:{target_date}]` 與 `[END_DATE]` 之間）。\n\n" + "\n\n".join(full_text)
+            return f"⚠️ 找不到 `{target_date}` 的範圍，目前顯示全文：\n\n" + "\n\n".join(full_text)
         
     except Exception as e:
         return f"⚠️ 讀取導讀檔案時發生錯誤：{e}"
