@@ -620,7 +620,7 @@ with tab_admin:
                     st.toast(f"已成功刪除 {del_member} 在【{del_week_key}】的紀錄！")
                     st.rerun()
 
-       with admin_sub_tab2:
+        with admin_sub_tab2:
             st.markdown("### 🗓️ 上傳/更換進度表圖片（含歷史年份）")
 
             up_col1, up_col2 = st.columns(2)
@@ -636,9 +636,7 @@ with tab_admin:
 
             if uploaded_img is not None:
                 if st.button("⬆️ 儲存並發布此進度表"):
-                    # 1. 執行本地儲存與雲端同步
                     save_schedule_record(up_week_key, uploaded_img)
-                    # 2. 顯示完成標示，移除 st.rerun() 避免訊息被刷掉
                     st.info("處理完畢！請檢視上方是否有紅色錯誤訊息。若無錯誤代表上傳成功。")
 
             cur_img = get_schedule_image_path(up_week_key)
