@@ -100,7 +100,7 @@ def get_drive_service():
 
 import io
 
-@st.cache_data(ttl=1) # 暫時把快取時間縮短到 1 秒，避免快取作祟
+@st.cache_data(ttl=1)
 def fetch_docx_content(week_num, target_date=None):
     try:
         service = get_drive_service()
@@ -119,6 +119,9 @@ def fetch_docx_content(week_num, target_date=None):
         
         doc = docx.Document(file_bytes)
         
+        # 🔍 【除錯小幫手】直接把系統這秒鐘收到的目標日期印在畫面上方
+        st.info(f"🔍 系統目前收到的查詢目標 (target_date) 是：【{target_date}】")
+        
         if not target_date:
             full_text = [p.text for p in doc.paragraphs if p.text.strip() != ""]
             return "\n\n".join(full_text)
@@ -126,16 +129,12 @@ def fetch_docx_content(week_num, target_date=None):
         extracted_lines = []
         is_recording = False
         
-        # 🛠️ 測試用：把抓到的所有段落印出來看看裡面到底有沒有「第5天」
         all_paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip() != ""]
-        
-        # 尋找目標
         clean_target = str(target_date).replace(" ", "")
         
         for text in all_paragraphs:
             clean_line = text.replace(" ", "")
             
-            # 開始錄製
             if f"[DATE:{clean_target}]" in clean_line:
                 is_recording = True
                 continue
@@ -148,12 +147,10 @@ def fetch_docx_content(week_num, target_date=None):
         if extracted_lines:
             return "\n\n".join(extracted_lines).strip()
         else:
-            # 如果還是找不到，把整份 Word 的前幾行印出來給您看，抓出到底是哪裡讀錯
-            return f"⚠️ 找不到 `{target_date}`。雲端檔案內實際讀到的前幾行段落為：\n\n" + "\n---\n".join(all_paragraphs[:10])
+            return f"⚠️ 找不到對應 `{target_date}` 的範圍。檔案內的前幾行標記範例：\n\n" + "\n---\n".join(all_paragraphs[:5])
         
     except Exception as e:
         return f"⚠️ 發生錯誤：{e}"
-
 # ==========================================
 # 3. Google Drive 動態抓取圖片網址 (帶年份)
 # ==========================================
