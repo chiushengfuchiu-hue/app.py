@@ -96,6 +96,7 @@ def upload_img_to_gdrive(file_path, file_name):
     """同步上傳圖片檔至 Google Drive 指定資料夾"""
     try:
         if "gcp_service_account" not in st.secrets:
+            st.error("Secrets 中找不到 gcp_service_account 設定！")
             return
         
         scope = ["https://www.googleapis.com/auth/drive"]
@@ -111,8 +112,11 @@ def upload_img_to_gdrive(file_path, file_name):
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         drive_service = build('drive', 'v3', credentials=creds)
 
+        # 取得 Folder ID 並清理字串（防止傳入完整 URL）
         folder_id = st.secrets.get("drive_folder_id", None)
-        
+        if folder_id and "folders/" in folder_id:
+            folder_id = folder_id.split("folders/")[1].split("?")[0]
+
         file_metadata = {'name': file_name}
         if folder_id:
             file_metadata['parents'] = [folder_id]
@@ -122,6 +126,7 @@ def upload_img_to_gdrive(file_path, file_name):
         logging.info(f"圖片 {file_name} 已成功同步至 Google Drive")
     except Exception as e:
         logging.error(f"Google Drive 圖片上傳失敗: {e}")
+        st.error(f"⚠️ Google Drive 同步失敗原因: {e}")
 
 def add_single_record(week_key, member_name):
     df = load_attendance()
