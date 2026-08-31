@@ -491,7 +491,7 @@ with tab_user:
 
             st.markdown(f"### 📍 【本週進度】{current_week_display}")
 
-                is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
+            is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
 
             if is_signed:
                 st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
