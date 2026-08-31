@@ -102,7 +102,7 @@ import io
 
 @st.cache_data(ttl=3600)
 def fetch_docx_content(week_num, target_date=None):
-    """從雲端硬碟讀取 Word，採用關鍵字寬鬆比對，絕對不會漏抓"""
+    """從雲端硬碟讀取 Word，採用無條件清除空白的精準對應版"""
     try:
         service = get_drive_service()
         if not service:
@@ -135,31 +135,34 @@ def fetch_docx_content(week_num, target_date=None):
         extracted_lines = []
         is_recording = False
         
-        # 我們把目標簡化：只要行裡面包含 "第3天" (或您選的日期) 且含有 DATE 就當作開始
+        # 清理目標日期字串（把所有空白拔掉，例如 "第 2 天" 變成 "第2天"）
+        clean_target = str(target_date).replace(" ", "").replace(" ", "")
+        
         for p in doc.paragraphs:
-            text = p.text.strip()
+            raw_text = p.text
+            # 把該行的所有空白跟特殊符號干擾降到最低
+            clean_line = raw_text.replace(" ", "").replace(" ", "")
             
-            # 檢查是否為當天的開始標記（只要包含目標字串，例如 "第3天"）
-            if target_date in text and ("DATE" in text or "日期" in text or "[" in text):
+            # 檢查是否遇到當天的開始標記 (例如 [DATE:第2天])
+            if f"[DATE:{clean_target}]" in clean_line:
                 is_recording = True
-                continue # 跳過標記行
+                continue # 跳過標記行本身
                 
-            # 如果正在錄製，但遇到了下一個日期標記或結束標記，就停下來
+            # 如果正在錄製中
             if is_recording:
-                if "[DATE:" in text or "【" in text and "第" in text and target_date not in text:
-                    # 遇到下一天的標記了，結束
+                # 遇到結尾標記，或者遇到下一個 [DATE:...] 標記就立刻停止
+                if "[END_DATE]" in clean_line or "[DATE:" in clean_line:
                     break
-                if "[END_DATE]" in text:
-                    is_recording = False
-                    break
-                extracted_lines.append(p.text)
+                
+                # 收集內文（保留原本排版）
+                if raw_text.strip() != "":
+                    extracted_lines.append(raw_text)
                 
         if extracted_lines:
             return "\n\n".join(extracted_lines).strip()
         else:
-            # 如果還是抓不到，印出提示並回傳全篇
             full_text = [p.text for p in doc.paragraphs if p.text.strip() != ""]
-            return f"⚠️ 找不到 `{target_date}` 的範圍，目前顯示全文：\n\n" + "\n\n".join(full_text)
+            return f"⚠️ 找不到對應 `{target_date}` 的範圍，目前顯示全文：\n\n" + "\n\n".join(full_text)
         
     except Exception as e:
         return f"⚠️ 讀取導讀檔案時發生錯誤：{e}"
