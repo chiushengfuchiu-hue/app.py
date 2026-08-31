@@ -642,21 +642,24 @@ with tab_history:
         horizontal=True
     )
 
-    with st.spinner("正在從雲端硬碟導讀資料夾抓取檔案中..."):
-        doc_content = fetch_docx_content(target_w_num, target_date=selected_day)
+    # 1. 先判斷檢視模式，讓 st.selectbox 先生產出 selected_day 變數
+if view_mode == "📅 按天切換閱讀 (Day 1 - Day 7)":
+    selected_day = st.selectbox(
+        "選擇天數：",
+        [f"第 {i} 天" for i in range(1, 8)]
+    )
+    st.caption("💡 提示：導讀 Word 檔為全週彙整，您也可以隨時切換回「全文導讀」使用滾輪流暢瀏覽。")
+else:
+    selected_day = None  # 全文導讀模式不需要指定特定天數
 
-    if not doc_content:
-        st.info(f"💡 雲端硬碟導讀資料夾中尚未找到第 {target_w_num} 週的 Word 導讀檔案。")
-    else:
-        display_text = doc_content
-        
-        if view_mode == "📅 按天切換閱讀 (Day 1 - Day 7)":
-            selected_day = st.selectbox(
-                "選擇天數：",
-                [f"第 {i} 天" for i in range(1, 8)]
-            )
-            st.caption("💡 提示：導讀 Word 檔為全週彙整，您也可以隨時切換回「全文導讀」使用滾輪流暢瀏覽。")
+# 2. 接著才帶著 selected_day 去跟雲端硬碟抓資料
+with st.spinner("正在從雲端硬碟導讀資料夾抓取檔案中..."):
+    doc_content = fetch_docx_content(target_w_num, target_date=selected_day)
 
+if not doc_content:
+    st.info(f"💡 雲端硬碟導讀資料夾中尚未找到第 {target_w_num} 週的 Word 導讀檔案。")
+else:
+    display_text = doc_content
         # 獨立捲軸的文字閱覽框
         st.markdown(
             f"""
