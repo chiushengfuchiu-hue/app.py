@@ -99,27 +99,39 @@ def get_drive_service():
     return build("drive", "v3", credentials=scoped_creds)
 
 @st.cache_data(ttl=3600)
-def fetch_docx_content(week_num):
-    """從雲端硬碟導讀資料夾讀取對應週數的 Word 檔案內容"""
+def fetch_docx_content(year_num, week_num):
+    """根據年份與週數，從雲端硬碟導讀資料夾讀取對應的 Word 檔案經文與導讀內容"""
     try:
         service = get_drive_service()
         if not service:
             return None
-        query = f"'{GUIDE_FOLDER_ID}' in parents and name contains '{week_num}' and trashed = false"
+        
+        actual_year = 2026 - (PLAN_YEAR - year_num)
+        query = f"'{GUIDE_FOLDER_ID}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
         files = results.get("files", [])
         
         target_file = None
+        search_terms = [f"第{week_num}周", f"第{week_num}週", f"W{week_num:02d}", f"{week_num}"]
+        
         for f in files:
-            if f["name"].startswith(str(week_num)) or f"W{week_num:02d}" in f["name"] or f"第{week_num}周" in f["name"]:
+            fname = f["name"]
+            # 確保同時符合年份與週數條件（若檔名包含年份或直接對應）
+            match_week = any(term in fname for term in search_terms)
+            match_year = str(actual_year) in fname or f"Y{year_num}" in fname
+            if match_week and (match_year or len(files) < 15):
                 target_file = f
                 break
         
         if not target_file and files:
-            target_file = files[0]
+            # 簡易備案：抓取符合週數的第一個檔案
+            for f in files:
+                if any(term in f["name"] for term in search_terms):
+                    target_file = f
+                    break
                 
         if not target_file:
-            return None
+            return f"💡 雲端資料夾中找不到第 {year_num} 年第 {week_num:02d} 週的導讀檔案。"
 
         request = service.files().get_media(fileId=target_file["id"])
         file_bytes = io.BytesIO(request.execute())
@@ -135,9 +147,6 @@ def fetch_docx_content(week_num):
 # ==========================================
 @st.cache_data(ttl=300)
 def get_gdrive_image_url(year_num, week_num):
-    """
-    根據年份與週數，精準搜尋 Google Drive 中的對應圖檔
-    """
     try:
         creds = get_gcp_credentials()
         if not creds:
@@ -213,7 +222,6 @@ def sync_to_gsheet_async(new_rows_list):
         logging.error(f"Google Sheets 同步失敗: {e}")
 
 def add_batch_records(records_list):
-    """批量新增簽到紀錄 (避免多次讀寫檔案)"""
     df = load_attendance()
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     new_rows = []
@@ -410,7 +418,7 @@ st.title(f"📖 最新讀經進度表（{current_week_display}）")
 
 tab_user, tab_history, tab_admin = st.tabs([
     "✍️ 會友簽到專區", 
-    "🗓️ 過往進度與導讀查詢", 
+    "🗓️ 過往進度與導讀經文查詢", 
     "🔒 後台統計管理"
 ])
 
@@ -589,10 +597,10 @@ with tab_user:
         st.markdown(f"💬 **心靈補給**：{verse_info['encouragement']}")
 
 # ------------------------------------------
-# TAB 2: 獨立過往讀經進度查詢與 Word 導讀頁面
+# TAB 2: 獨立過往讀經進度查詢與導讀經文檢視
 # ------------------------------------------
 with tab_history:
-    st.markdown("### 🗓️ 歷史讀經進度表與導讀查詢")
+    st.markdown("### 🗓️ 歷史讀經進度與導讀經文查詢")
 
     col_y, col_w = st.columns([1, 2])
     with col_y:
@@ -613,19 +621,19 @@ with tab_history:
         st.warning(f"📌 雲端硬碟中尚未找到【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】的進度表圖片。")
 
     st.divider()
-    st.markdown(f"### 📖 第 {target_w_num} 週 讀經導讀內容閱覽")
+    st.markdown(f"### 📖 第 {target_y_num} 年 - 第 {target_w_num:02d} 週 導讀經文與內容閱覽")
 
     view_mode = st.radio(
         "請選擇檢視模式：",
-        ["📜 全文導讀", "📅 按天切換閱讀 (Day 1 - Day 7)"],
+        ["📜 全週導讀總覽", "📅 按天切換閱讀 (Day 1 - Day 7)"],
         horizontal=True
     )
 
-    with st.spinner("正在從雲端硬碟導讀資料夾抓取檔案中..."):
-        doc_content = fetch_docx_content(target_w_num)
+    with st.spinner("正在從雲端硬碟抓取對應週數的導讀經文檔案中..."):
+        doc_content = fetch_docx_content(target_y_num, target_w_num)
 
     if not doc_content:
-        st.info(f"💡 雲端硬碟導讀資料夾中尚未找到第 {target_w_num} 週的 Word 導讀檔案。")
+        st.info("💡 尚未找到對應的導讀檔案。")
     else:
         display_text = doc_content
         
@@ -634,18 +642,18 @@ with tab_history:
                 "選擇天數：",
                 [f"第 {i} 天" for i in range(1, 8)]
             )
-            st.caption("💡 提示：導讀 Word 檔為全週彙整，您也可以隨時切換回「全文導讀」使用滾輪流暢瀏覽。")
+            st.caption("💡 提示：若您的 Word 檔已依每日分段，您可上下捲動下方文字框進行對照閱讀。")
 
-        # 獨立捲軸的文字閱覽框
+        # 具備獨立捲軸的文字閱覽框
         st.markdown(
             f"""
             <div style="
-                height: 450px; 
+                height: 480px; 
                 overflow-y: scroll; 
                 background-color: #f8f9fa; 
                 padding: 20px; 
-                border-radius: 10px; 
-                border: 1px solid #cbd5e1;
+                border-radius: 12px; 
+                border: 2px solid #cbd5e1;
                 line-height: 1.8;
                 font-size: 16px;
                 color: #1e293b;
