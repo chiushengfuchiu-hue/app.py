@@ -100,9 +100,8 @@ def get_drive_service():
 
 import io
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1) # 暫時把快取時間縮短到 1 秒，避免快取作祟
 def fetch_docx_content(week_num, target_date=None):
-    """從雲端硬碟讀取 Word，採用無條件清除空白的精準對應版"""
     try:
         service = get_drive_service()
         if not service:
@@ -111,17 +110,9 @@ def fetch_docx_content(week_num, target_date=None):
         results = service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
         files = results.get("files", [])
         
-        target_file = None
-        for f in files:
-            if f["name"].startswith(str(week_num)) or f"W{week_num:02d}" in f["name"] or f"第{week_num}周" in f["name"]:
-                target_file = f
-                break
-        
-        if not target_file and files:
-            target_file = files[0]
-                
+        target_file = files[0] if files else None
         if not target_file:
-            return None
+            return "找不到檔案"
 
         request = service.files().get_media(fileId=target_file["id"])
         file_bytes = io.BytesIO(request.execute())
@@ -135,37 +126,33 @@ def fetch_docx_content(week_num, target_date=None):
         extracted_lines = []
         is_recording = False
         
-        # 清理目標日期字串（把所有空白拔掉，例如 "第 2 天" 變成 "第2天"）
-        clean_target = str(target_date).replace(" ", "").replace(" ", "")
+        # 🛠️ 測試用：把抓到的所有段落印出來看看裡面到底有沒有「第5天」
+        all_paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip() != ""]
         
-        for p in doc.paragraphs:
-            raw_text = p.text
-            # 把該行的所有空白跟特殊符號干擾降到最低
-            clean_line = raw_text.replace(" ", "").replace(" ", "")
+        # 尋找目標
+        clean_target = str(target_date).replace(" ", "")
+        
+        for text in all_paragraphs:
+            clean_line = text.replace(" ", "")
             
-            # 檢查是否遇到當天的開始標記 (例如 [DATE:第2天])
+            # 開始錄製
             if f"[DATE:{clean_target}]" in clean_line:
                 is_recording = True
-                continue # 跳過標記行本身
+                continue
                 
-            # 如果正在錄製中
             if is_recording:
-                # 遇到結尾標記，或者遇到下一個 [DATE:...] 標記就立刻停止
-                if "[END_DATE]" in clean_line or "[DATE:" in clean_line:
+                if "[END_DATE]" in clean_line or ("[DATE:" in clean_line and clean_target not in clean_line):
                     break
-                
-                # 收集內文（保留原本排版）
-                if raw_text.strip() != "":
-                    extracted_lines.append(raw_text)
+                extracted_lines.append(text)
                 
         if extracted_lines:
             return "\n\n".join(extracted_lines).strip()
         else:
-            full_text = [p.text for p in doc.paragraphs if p.text.strip() != ""]
-            return f"⚠️ 找不到對應 `{target_date}` 的範圍，目前顯示全文：\n\n" + "\n\n".join(full_text)
+            # 如果還是找不到，把整份 Word 的前幾行印出來給您看，抓出到底是哪裡讀錯
+            return f"⚠️ 找不到 `{target_date}`。雲端檔案內實際讀到的前幾行段落為：\n\n" + "\n---\n".join(all_paragraphs[:10])
         
     except Exception as e:
-        return f"⚠️ 讀取導讀檔案時發生錯誤：{e}"
+        return f"⚠️ 發生錯誤：{e}"
 
 # ==========================================
 # 3. Google Drive 動態抓取圖片網址 (帶年份)
