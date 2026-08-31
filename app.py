@@ -72,6 +72,37 @@ st.set_page_config(
 # 2. 資料庫與邏輯處理
 # ==========================================
 def load_attendance():
+  # 1. 嘗試從 Google Sheets 載入最新完整資料（避免雲端伺服器重設導致檔案消失）
+  try:
+    if "gcp_service_account" in st.secrets:
+      scope = [
+          "https://www.googleapis.com/auth/spreadsheets",
+          "https://www.googleapis.com/auth/drive",
+      ]
+      creds_dict = dict(st.secrets["gcp_service_account"])
+      if "private_key" in creds_dict:
+        pk = creds_dict["private_key"].replace("\\n", "\n")
+        if not pk.startswith("-----BEGIN PRIVATE KEY-----"):
+          pk = "-----BEGIN PRIVATE KEY-----\n" + pk
+        if not pk.endswith("-----END PRIVATE KEY-----"):
+          pk = pk + "\n-----END PRIVATE KEY-----"
+        creds_dict["private_key"] = pk.strip()
+
+      creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+      client = gspread.authorize(creds)
+      sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+      sheet = client.open(sheet_name).sheet1
+
+      data = sheet.get_all_records()
+      if data:
+        df = pd.DataFrame(data, dtype=str)
+        # 存一份備份到本機
+        df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8-sig")
+        return df
+  except Exception as e:
+    logging.error(f"從 Google Sheets 讀取資料失敗，改讀取本機 CSV: {e}")
+
+  # 2. 若 Google Sheets 讀取失敗，才退回讀取本機 CSV
   if os.path.exists(ATTENDANCE_FILE):
     try:
       df = pd.read_csv(ATTENDANCE_FILE, dtype=str)
@@ -83,6 +114,7 @@ def load_attendance():
       return df
     except Exception as e:
       logging.error(f"讀取簽到紀錄失敗: {e}")
+
   return pd.DataFrame(columns=["week_key", "member_name", "timestamp"])
 
 
