@@ -9,9 +9,6 @@ import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
 from googleapiclient.discovery import build
-import google.generativeai as genai
-from PIL import Image
-import requests
 
 # ==========================================
 # 簽到二次確認彈窗
@@ -207,30 +204,65 @@ def get_gdrive_image_url(year_num, week_num):
     
     return None
 
-def ai_detect_books_from_image(image_url):
-    """利用 Gemini 視覺模型自動辨識進度表圖片中出現的經卷名稱"""
+# ==========================================
+# Google Sheets 每日進度讀寫函式
+# ==========================================
+@st.cache_data(ttl=60)
+def load_daily_schedule_from_sheet():
+    """從 Google Sheets 的 Daily_Schedule 頁籤讀取每日進度"""
     try:
-        if not image_url:
-            return []
+        creds = get_gcp_credentials()
+        if not creds:
+            return pd.DataFrame(columns=["year", "week_num", "date_str", "schedule_content"])
+        client = gspread.authorize(creds)
+        sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
         
-        response = requests.get(image_url)
-        img = Image.open(io.BytesIO(response.content))
+        try:
+            worksheet = client.open(sheet_name).worksheet("Daily_Schedule")
+        except Exception:
+            # 如果還沒有建立 Daily_Schedule 頁籤，回傳空 DataFrame
+            return pd.DataFrame(columns=["year", "week_num", "date_str", "schedule_content"])
+            
+        data = worksheet.get_all_records()
+        df = pd.DataFrame(data)
+        if df.empty:
+            return pd.DataFrame(columns=["year", "week_num", "date_str", "schedule_content"])
         
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = "請仔細閱讀這張聖經讀經進度表圖片，找出這張表所涵蓋的所有聖經書卷名稱（例如創世記、約珥書、阿摩司書等）。請直接條列出書卷名稱即可，不要有多餘的字句。"
-        
-        result = model.generate_content([img, prompt])
-        text_result = result.text.strip()
-        
-        detected_books = []
-        for book_name in BOOK_CODE_MAP.keys():
-            if book_name in text_result:
-                detected_books.append(book_name)
+        # 確保必要欄位存在
+        for col in ["year", "week_num", "date_str", "schedule_content"]:
+            if col not in df.columns:
+                df[col] = ""
+            else:
+                df[col] = df[col].astype(str).str.strip()
                 
-        return detected_books
+        return df
     except Exception as e:
-        logging.error(f"自動辨識圖片失敗: {e}")
-        return []
+        logging.error(f"讀取 Daily_Schedule 失敗: {e}")
+        return pd.DataFrame(columns=["year", "week_num", "date_str", "schedule_content"])
+
+def add_daily_schedule_to_sheet(year, week_num, date_str, schedule_content):
+    """新增或更新每日進度到 Google Sheets"""
+    try:
+        creds = get_gcp_credentials()
+        if not creds:
+            return False
+        client = gspread.authorize(creds)
+        sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+        
+        try:
+            worksheet = client.open(sheet_name).worksheet("Daily_Schedule")
+        except Exception:
+            # 如果頁籤不存在，自動建立並加上標題列
+            spreadsheet = client.open(sheet_name)
+            worksheet = spreadsheet.add_worksheet(title="Daily_Schedule", rows=100, cols=4)
+            worksheet.append_row(["year", "week_num", "date_str", "schedule_content"])
+            
+        worksheet.append_row([str(year), str(week_num), str(date_str), str(schedule_content)])
+        st.cache_data.clear() # 清除快取以便即時讀取
+        return True
+    except Exception as e:
+        logging.error(f"寫入 Daily_Schedule 失敗: {e}")
+        return False
 
 # ==========================================
 # 3. 資料庫與簽到邏輯
@@ -456,6 +488,7 @@ current_week_display = f"第 {PLAN_YEAR} 年 - 第 {current_week_num:02d} 週"
 df_members = load_members()
 member_list = df_members["member_name"].tolist()
 df_attendance = load_attendance()
+df_schedule = load_daily_schedule_from_sheet()
 
 st.title(f"📖 最新讀經進度表（{current_week_display}）")
 
@@ -474,6 +507,18 @@ with tab_user:
         st.image(current_img_url, caption=f"【最新進度】{current_week_display}", use_container_width=True)
     else:
         st.info(f"📌 目前為【{current_week_display}】簽到（雲端硬碟尚未找到第 {current_week_num} 週進度表）。")
+
+    # 顯示 Google Sheets 中設定好的本週每日進度（0 延遲秒開）
+    st.markdown("### 📅 本週每日經文進度對照")
+    if not df_schedule.empty:
+        week_sched = df_schedule[(df_schedule["year"].astype(str) == str(PLAN_YEAR)) & (df_schedule["week_num"].astype(str) == str(current_week_num))]
+        if not week_sched.empty:
+            for _, row in week_sched.iterrows():
+                st.markdown(f"- **{row['date_str']}**：{row['schedule_content']}")
+        else:
+            st.info("💡 管理員尚未在 Google Sheets 填寫本週每日經文細項。")
+    else:
+        st.info("💡 尚未建立 Daily_Schedule 頁籤或無資料。")
 
     st.markdown("<div id='divider-top-anchor'></div>", unsafe_allow_html=True)
     st.divider()
@@ -640,7 +685,7 @@ with tab_user:
         st.markdown(f"💬 **心靈補給**：{verse_info['encouragement']}")
 
 # ------------------------------------------
-# TAB 2: AI 智慧辨識與歷史導讀經文檢視
+# TAB 2: 歷史進度與導讀經文查詢
 # ------------------------------------------
 with tab_history:
     st.markdown("### 🗓️ 歷史讀經進度與導讀經文查詢")
@@ -660,22 +705,37 @@ with tab_history:
 
     if history_img_url:
         st.image(history_img_url, caption=f"【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】進度對照表", use_container_width=True)
-        
-        # 🤖 自動透過 AI 視覺辨識圖片中的經卷
-        with st.spinner("🤖 正在智慧辨識進度表圖片中的經文與經卷..."):
-            auto_detected_books = ai_detect_books_from_image(history_img_url)
     else:
         st.warning(f"📌 雲端硬碟中尚未找到【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】的進度表圖片。")
-        auto_detected_books = []
+
+    # 顯示該週從 Google Sheets 讀取的每日進度
+    st.markdown(f"### 📅 第 {target_y_num} 年 - 第 {target_w_num:02d} 週 每日經文進度細項")
+    selected_week_books = []
+    if not df_schedule.empty:
+        sched_matched = df_schedule[(df_schedule["year"].astype(str) == str(target_y_num)) & (df_schedule["week_num"].astype(str) == str(target_w_num))]
+        if not sched_matched.empty:
+            for _, r in sched_matched.iterrows():
+                st.markdown(f"- **{r['date_str']}**：{r['schedule_content']}")
+                selected_week_books.append(str(r['schedule_content']))
+        else:
+            st.info("💡 該週尚未在 Google Sheets 填寫每日進度。")
+    else:
+        st.info("💡 尚未讀取到 Google Sheets 進度資料。")
 
     st.divider()
     
-    default_books = auto_detected_books if auto_detected_books else ["創世記"]
+    # 自動從 Google Sheets 讀到的進度文字中萃取經卷名稱對應 Word 導讀
+    detected_books = []
+    for b_key in BOOK_CODE_MAP.keys():
+        if any(b_key in sb for sb in selected_week_books):
+            detected_books.append(b_key)
+            
+    default_books = detected_books if detected_books else ["創世記"]
     
     st.markdown(f"### 📖 第 {target_y_num} 年 - 第 {target_w_num:02d} 週 導讀經文自動對應檢視")
     
     selected_books = st.multiselect(
-        "✨ AI 已自動辨識本週對應經卷（可隨時手動增減）：",
+        "✨ 系統自動對應本週經卷（可隨時手動增減）：",
         options=list(BOOK_CODE_MAP.keys()),
         default=default_books,
         key=f"books_sel_{target_y_num}_{target_w_num}"
@@ -704,35 +764,14 @@ with tab_history:
             )
             target_day_num = int(selected_day_label.split("第 ")[1].split(" 天")[0])
             
-            lines = full_doc_content.split("\n")
-            filtered_lines = []
-            capturing = False
-            found_any_day_tag = False
-            
-            for line in lines:
-                l_lower = line.lower()
-                if f"day {target_day_num}" in l_lower or f"第{target_day_num}天" in l_lower or f"day{target_day_num}" in l_lower:
-                    found_any_day_tag = True
-                    capturing = True
-                    filtered_lines.append(line)
-                    continue
-                elif capturing:
-                    if any(f"day {d}" in l_lower or f"第{d}天" in l_lower for d in range(1, 8) if d != target_day_num):
-                        capturing = False
-                    else:
-                        filtered_lines.append(line)
-            
-            if found_any_day_tag and filtered_lines:
-                display_text = "\n".join(filtered_lines)
+            paragraphs = [p for p in full_doc_content.split("\n\n") if p.strip()]
+            if len(paragraphs) >= 7:
+                chunk_size_p = max(1, len(paragraphs) // 7)
+                start_idx = (target_day_num - 1) * chunk_size_p
+                end_idx = start_idx + chunk_size_p if target_day_num < 7 else len(paragraphs)
+                display_text = f"💡 [提示：系統已自動為您擷取第 {target_day_num} 天對應段落]\n\n" + "\n\n".join(paragraphs[start_idx:end_idx])
             else:
-                paragraphs = [p for p in full_doc_content.split("\n\n") if p.strip()]
-                if len(paragraphs) >= 7:
-                    chunk_size_p = max(1, len(paragraphs) // 7)
-                    start_idx = (target_day_num - 1) * chunk_size_p
-                    end_idx = start_idx + chunk_size_p if target_day_num < 7 else len(paragraphs)
-                    display_text = f"💡 [提示：系統已自動為您擷取第 {target_day_num} 天對應段落]\n\n" + "\n\n".join(paragraphs[start_idx:end_idx])
-                else:
-                    display_text = full_doc_content
+                display_text = full_doc_content
 
         st.markdown(
             f"""
@@ -765,8 +804,9 @@ with tab_admin:
     if pwd == ADMIN_PASSWORD:
         st.success("🔓 驗證成功，歡迎進入後台管理系統！")
 
-        admin_sub_tab1, admin_sub_tab2 = st.tabs([
+        admin_sub_tab1, admin_sub_tab2, admin_sub_tab3 = st.tabs([
             "📊 簽到進度總覽與匯出", 
+            "📅 每日進度維護 (Sheets)",
             "👥 會友名單編輯"
         ])
 
@@ -828,6 +868,32 @@ with tab_admin:
                     st.rerun()
 
         with admin_sub_tab2:
+            st.markdown("### 📅 新增與維護每日經文進度 (同步至 Google Sheets)")
+            st.write("在此輸入特定日期與經文進度，資料將直接寫入 Google Sheets 的 `Daily_Schedule` 頁籤中：")
+
+            with st.form("add_schedule_form"):
+                sc_year = st.number_input("年份 (Year)", min_value=1, max_value=4, value=PLAN_YEAR)
+                sc_week = st.number_input("週數 (Week Number)", min_value=1, max_value=52, value=36)
+                sc_date = st.text_input("日期標籤 (例如：8月30日)", value="8月30日")
+                sc_content = st.text_input("當日經文進度 (例如：約珥書 3章)", value="約珥書 3章")
+                
+                submitted = st.form_submit_button("➕ 寫入 Google Sheets 每日進度")
+                if submitted:
+                    success = add_daily_schedule_to_sheet(sc_year, sc_week, sc_date, sc_content)
+                    if success:
+                        st.success(f"🎉 成功新增：`{sc_date} - {sc_content}`！")
+                        st.rerun()
+                    else:
+                        st.error("⚠️ 寫入失敗，請確認 Google Sheets 權限或是否有建立 `Daily_Schedule` 頁籤。")
+
+            st.divider()
+            st.markdown("#### 📋 目前 Google Sheets 中的每日進度總覽：")
+            if not df_schedule.empty:
+                st.dataframe(df_schedule, use_container_width=True)
+            else:
+                st.info("目前尚無任何每日進度資料，請先至 Google Sheets 建立名為 `Daily_Schedule` 的頁籤（欄位包含：year, week_num, date_str, schedule_content），或直接使用上方表單新增。")
+
+        with admin_sub_tab3:
             st.markdown("### 👥 管理會友名單")
             st.write("可在下方文字框中新增或修改會友姓名（每行一位）：")
 
