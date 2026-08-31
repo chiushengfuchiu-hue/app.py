@@ -49,13 +49,12 @@ logging.basicConfig(level=logging.INFO)
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
-SCHEDULE_FILE = "daily_schedules.csv" # 儲存後台手動輸入的文字進度
+SCHEDULE_FILE = "daily_schedules.csv" 
 GUIDE_FOLDER_ID = "1-RkVxCZy9wS_2X6Huw5p2mWhv1b6l0HM"
 
 ADMIN_PASSWORD = st.secrets.get("admin_password", "11190928")
 PLAN_YEAR = 2
 
-# 66 卷經書與雲端硬碟編號對照表
 BOOK_CODE_MAP = {
     "創世記": "01", "出埃及記": "02", "利未記": "03", "民數記": "04", "申命記": "05",
     "約書亞記": "06", "士師記": "07", "路得記": "08", "撒母耳記上": "09", "撒母耳記下": "10",
@@ -135,8 +134,8 @@ def get_schedule_text(year_num, week_num):
     return ""
 
 @st.cache_data(ttl=3600)
-def fetch_docx_content_by_books(book_names):
-    """根據指定的經卷名稱清單，自動從雲端硬碟對應編號抓取檔案並合併內容"""
+def fetch_docx_chapter_content(book_name, chapter_query=""):
+    """從雲端硬碟抓取指定經卷，並可依據章節關鍵字（例如：第3章）精準擷取段落"""
     try:
         service = get_drive_service()
         if not service:
@@ -146,35 +145,62 @@ def fetch_docx_content_by_books(book_names):
         results = service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
         files = results.get("files", [])
         
-        combined_text = []
+        matched_code = None
+        for key, code in BOOK_CODE_MAP.items():
+            if key in book_name:
+                matched_code = code
+                break
         
-        for b_name in book_names:
-            matched_code = None
-            for key, code in BOOK_CODE_MAP.items():
-                if key in b_name:
-                    matched_code = code
-                    break
+        target_file = None
+        for f in files:
+            fname = f["name"]
+            if matched_code and (fname.startswith(matched_code) or f"{matched_code}_" in fname or f"{matched_code}." in fname):
+                target_file = f
+                break
+            elif book_name in fname:
+                target_file = f
+                break
+        
+        if not target_file:
+            return f"💡 雲端資料夾中找不到與「{book_name}」對應的導讀 Word 檔案。"
             
-            target_file = None
-            for f in files:
-                fname = f["name"]
-                if matched_code and (fname.startswith(matched_code) or f"{matched_code}_" in fname or f"{matched_code}." in fname):
-                    target_file = f
-                    break
-                elif b_name in fname:
-                    target_file = f
-                    break
+        request = service.files().get_media(fileId=target_file["id"])
+        file_bytes = io.BytesIO(request.execute())
+        doc = docx.Document(file_bytes)
+        
+        paragraphs = [p.text for p in doc.paragraphs if p.text.strip() != ""]
+        
+        # 如果有指定要抓特定章節（例如「第3章」或「3章」），嘗試進行區段擷取
+        if chapter_query:
+            filtered_paragraphs = []
+            capturing = False
+            # 轉換常見的章節寫法以利比對
+            q_clean = chapter_query.replace("第", "").replace("章", "").strip()
             
-            if target_file:
-                request = service.files().get_media(fileId=target_file["id"])
-                file_bytes = io.BytesIO(request.execute())
-                doc = docx.Document(file_bytes)
-                file_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip() != ""])
-                combined_text.append(f"📌 【經卷導讀：{b_name} (對應檔案: {target_file['name']})】\n\n{file_text}")
-            else:
-                combined_text.append(f"💡 雲端資料夾中找不到與「{b_name}」對應的導讀 Word 檔案。")
+            for p in paragraphs:
+                # 檢查是否遇到目標章節的標題
+                if f"第{q_clean}章" in p or f"第 {q_clean} 章" in p or f"{q_clean}章" in p:
+                    capturing = True
+                elif capturing:
+                    # 如果遇到下一個章節標題，就停止擷取
+                    if any(f"第{i}章" in p or f"第 {i} 章" in p for i in range(int(q_clean)+1, int(q_clean)+5)):
+                        break
                 
-        return "\n\n" + "="*40 + "\n\n".join(combined_text)
+                if capturing:
+                    filtered_paragraphs.append(p)
+            
+            # 如果用區段邏輯找不到，退而求其次找包含關鍵字的段落
+            if not filtered_paragraphs:
+                filtered_paragraphs = [p for p in paragraphs if q_clean in p or chapter_query in p]
+                
+            if filtered_paragraphs:
+                content_str = "\n".join(filtered_paragraphs)
+                return f"📌 【經卷導讀：{book_name} - {chapter_query} (來源檔案: {target_file['name']})】\n\n{content_str}"
+
+        # 預設回傳整份檔案內容
+        full_text = "\n".join(paragraphs)
+        return f"📌 【經卷導讀：{book_name} (來源檔案: {target_file['name']})】\n\n{full_text}"
+        
     except Exception as e:
         return f"⚠️ 讀取導讀檔案時發生錯誤：{e}"
 
@@ -424,7 +450,7 @@ with tab_user:
     st.markdown(f"📖 **本週靈修經文**：{verse_info['ref']}\n> *{verse_info['verse']}*")
 
 # ------------------------------------------
-# TAB 2: 歷史導讀經文查詢（自動比對不手動）
+# TAB 2: 歷史導讀經文查詢（精準對應書名與章節）
 # ------------------------------------------
 with tab_history:
     st.markdown("### 🗓️ 歷史讀經進度與導讀經文查詢")
@@ -448,46 +474,60 @@ with tab_history:
 
     st.divider()
     
-    # 💡 核心自動化：從後台手動填寫的文字進度中，自動比對出現在其中的聖經書卷名稱！
+    # 讀取後台手動填寫的文字進度
     schedule_text = get_schedule_text(target_y_num, target_w_num)
     
+    st.markdown(f"### 📖 第 {target_y_num} 年 - 第 {target_w_num:02d} 週 導讀經文精準比對")
+    
+    if schedule_text.strip():
+        st.info(f"✨ 系統已讀取到後台設定的進度內容：\n\n> {schedule_text}")
+    else:
+        st.warning("💡 管理員尚未在後台輸入該週文字進度，請至後台填寫（例如：8月30日 約珥書第3章）。")
+
+    # 讓使用者選擇要查閱當週內的哪一天或哪一章（或者預設全部顯示）
+    # 從後台文字中自動找出出現過的書名與可能的章節
     detected_books = []
+    detected_chapters = []
+    
     for b_name in BOOK_CODE_MAP.keys():
         if b_name in schedule_text:
             if b_name not in detected_books:
                 detected_books.append(b_name)
                 
-    # 如果後台還沒填寫該週文字，預設給創世記避免報錯
-    active_books = detected_books if detected_books else ["創世記"]
-
-    st.markdown(f"### 📖 第 {target_y_num} 年 - 第 {target_w_num:02d} 週 導讀經文自動對應檢視")
+    # 簡單用下拉選單讓使用者可以切換要看哪一本書或章節
     if detected_books:
-        st.info(f"✨ 系統已從後台文字進度中自動鎖定本週經卷：**{'、'.join(detected_books)}**")
+        selected_target_book = st.selectbox("🎯 選擇要檢視的經卷：", detected_books, key="sel_target_book")
+        
+        # 讓使用者選擇要看哪一章（如果後台有寫「3章」之類的）
+        chapter_options = ["全部檢視", "第3章", "第1章", "第2章", "第4章", "第5章", "第6章", "第7章"]
+        selected_chapter = st.selectbox("🎯 選擇要檢視的章節：", chapter_options, key="sel_target_chap")
+        
+        chap_query = "" if selected_chapter == "全部檢視" else selected_chapter
+
+        with st.spinner(f"正在從雲端硬碟擷取 {selected_target_book} ({selected_chapter}) 的導讀內容中..."):
+            doc_content = fetch_docx_chapter_content(selected_target_book, chap_query)
+
+        st.markdown(
+            f"""
+            <div style="
+                height: 500px; 
+                overflow-y: scroll; 
+                background-color: #f8f9fa; 
+                padding: 20px; 
+                border-radius: 12px; 
+                border: 2px solid #cbd5e1;
+                line-height: 1.8;
+                font-size: 16px;
+                color: #1e293b;
+                white-space: pre-wrap;
+            ">
+                {doc_content}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
     else:
-        st.warning("💡 管理員尚未在後台輸入該週文字進度，目前暫以預設顯示。")
-
-    with st.spinner("正在從雲端硬碟抓取對應的經卷導讀檔案中..."):
-        full_doc_content = fetch_docx_content_by_books(active_books)
-
-    st.markdown(
-        f"""
-        <div style="
-            height: 500px; 
-            overflow-y: scroll; 
-            background-color: #f8f9fa; 
-            padding: 20px; 
-            border-radius: 12px; 
-            border: 2px solid #cbd5e1;
-            line-height: 1.8;
-            font-size: 16px;
-            color: #1e293b;
-            white-space: pre-wrap;
-        ">
-            {full_doc_content}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+        st.info("📌 請先至後台填寫該週文字進度（包含書名，例如「約珥書3章」），下方就會自動帶出對應內容。")
 
 # ------------------------------------------
 # TAB 3: 後台統計與管理
@@ -527,24 +567,22 @@ with tab_admin:
                     st.rerun()
 
         with admin_sub_tab2:
-            st.markdown("### ✍️ 設定每週進度文字（供系統自動對應導讀）")
-            st.write("在此輸入該週的進度（例如包含「約珥書」、「阿摩司書」等字眼），系統就會自動去雲端硬碟抓取對應的 Word 導讀！")
+            st.markdown("### ✍️ 設定每週進度文字")
+            st.write("在此輸入該週的詳細進度（例如：`8月30日 約珥書第3章`），系統會自動辨識書名並讓您精準檢視對應章節！")
 
             s_year = st.selectbox("設定年份：", [1, 2, 3, 4], index=PLAN_YEAR-1, key="set_s_year")
             s_week = st.number_input("設定週數 (1~52)：", 1, 52, current_week_num, key="set_s_week")
             
             existing_text = get_schedule_text(s_year, s_week)
-            s_content = st.text_area("請輸入該週每日進度或文字內容：", value=existing_text, height=150, placeholder="例如：8月30日 約珥書3章\n8月31日 阿摩司書1章...")
+            s_content = st.text_area("請輸入該週每日進度或文字內容：", value=existing_text, height=150, placeholder="例如：\n8月30日 約珥書第3章\n8月31日 阿摩司書第1章")
 
             if st.button("💾 儲存該週進度文字", type="primary"):
                 df_sched = load_schedules()
-                # 移除舊的
                 df_sched = df_sched[~((df_sched["year"].astype(str) == str(s_year)) & (df_sched["week_num"].astype(str) == str(s_week)))]
-                # 新增新的
                 new_row = pd.DataFrame([{"year": str(s_year), "week_num": str(s_week), "content": s_content}])
                 df_sched = pd.concat([df_sched, new_row], ignore_index=True)
                 save_schedules(df_sched)
-                st.success("🎉 該週進度文字儲存成功！系統已自動完成對應。")
+                st.success("🎉 該週進度文字儲存成功！")
                 st.rerun()
 
         with admin_sub_tab3:
