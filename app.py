@@ -40,7 +40,6 @@ def confirm_checkin_dialog(member_name, week_display, week_key, missing_weeks):
     with col2:
         if st.button("❌ 取消", type="secondary", use_container_width=True):
             st.rerun()
-
 # 設定 Logging 紀錄
 logging.basicConfig(level=logging.INFO)
 
