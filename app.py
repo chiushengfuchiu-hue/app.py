@@ -3,9 +3,12 @@ import pandas as pd
 import datetime
 import os
 import logging
+import io
+import docx
 import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
+from googleapiclient.discovery import build
 
 # 設定 Logging 紀錄
 logging.basicConfig(level=logging.INFO)
@@ -16,6 +19,7 @@ logging.basicConfig(level=logging.INFO)
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
+GUIDE_FOLDER_ID = "1-RkVxCZy9wS_2X6Huw5p2mWhv1b6l0HM"
 
 ADMIN_PASSWORD = st.secrets.get("admin_password", "11190928")
 PLAN_YEAR = 2
@@ -53,47 +57,69 @@ def get_gcp_credentials():
         creds_dict["private_key"] = pk.strip()
     return Credentials.from_service_account_info(creds_dict, scopes=scope)
 
-def init_gspread_client():
-    """初始化 gspread 客戶端以操作 Google 試算表"""
+@st.cache_resource
+def get_drive_service():
     creds = get_gcp_credentials()
-    if creds:
-        return gspread.authorize(creds)
-    return None
+    if not creds:
+        return None
+    scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+    scoped_creds = creds.with_scopes(scopes)
+    return build("drive", "v3", credentials=scoped_creds)
 
-# ==========================================
-# 3. 雲端導讀經文讀取函式
-# ==========================================
-def load_verses_from_cloud():
-    """
-    從 Google 雲端硬碟（Google 試算表）讀取導讀經文。
-    若讀取失敗或無設定，則退回到本地讀取 VERSES_FILE。
-    """
+@st.cache_data(ttl=3600)
+def fetch_docx_content(week_num):
+    """從雲端硬碟讀取 Word 導讀檔案內容"""
     try:
-        client = init_gspread_client()
-        if client and "google_sheet_name" in st.secrets:
-            sheet_name = st.secrets["google_sheet_name"]
-            # 假設經文資料放在名為 "verses" 或對應的工作表中
-            sh = client.open(sheet_name)
-            try:
-                worksheet = sh.worksheet("verses")
-            except Exception:
-                worksheet = sh.get_worksheet(0) # 預設取第一個分頁
-                
-            data = worksheet.get_all_records()
-            if data:
-                return pd.DataFrame(data)
-    except Exception as e:
-        logging.warning(f"從雲端讀取導讀經文失敗，改用本地檔案: {e}")
+        service = get_drive_service()
+        if not service:
+            return None
+        query = f"'{GUIDE_FOLDER_ID}' in parents and name contains '{week_num}' and trashed = false"
+        results = service.files().list(q=query, fields="files(id, name)").execute()
+        files = results.get("files", [])
         
-    # 本地備援讀取
-    if os.path.exists(VERSES_FILE):
-        return pd.read_csv(VERSES_FILE)
+        target_file = None
+        for f in files:
+            if f["name"].startswith(str(week_num)):
+                target_file = f
+                break
+                
+        if not target_file:
+            return None
+
+        request = service.files().get_media(fileId=target_file["id"])
+        file_bytes = io.BytesIO(request.execute())
+        
+        doc = docx.Document(file_bytes)
+        full_text = [p.text for p in doc.paragraphs if p.text.strip() != ""]
+        return "\n\n".join(full_text)
+    except Exception as e:
+        return f"⚠️ 讀取導讀檔案時發生錯誤：{e}"
+
+def load_attendance_data():
+    """讀取簽到資料"""
+    if os.path.exists(ATTENDANCE_FILE):
+        return pd.read_csv(ATTENDANCE_FILE, dtype=str)
     else:
-        # 若本地也沒有，回傳空的 DataFrame 避免報錯
-        return pd.DataFrame(columns=["week", "verse", "commentary"])
+        return pd.DataFrame(columns=["week_key", "member_name", "timestamp"])
+
+def add_batch_records(records_list):
+    """批次寫入簽到紀錄"""
+    df = load_attendance_data()
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    new_rows = []
+    for week_key, member_name in records_list:
+        exists = not df[(df["week_key"] == week_key) & (df["member_name"] == member_name)].empty
+        if not exists:
+            new_rows.append({"week_key": week_key, "member_name": member_name, "timestamp": now_str})
+            
+    if new_rows:
+        df_new = pd.DataFrame(new_rows)
+        df = pd.concat([df, df_new], ignore_index=True)
+        df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8-sig")
 
 # ==========================================
-# 4. 簽到二次確認彈窗
+# 3. 簽到二次確認彈窗
 # ==========================================
 @st.dialog("簽到確認")
 def confirm_checkin_dialog(member_name, week_display, week_key, missing_weeks):
@@ -105,13 +131,11 @@ def confirm_checkin_dialog(member_name, week_display, week_key, missing_weeks):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("✅ 確定簽到", type="primary", use_container_width=True):
-            # 彙整當週與過往未簽週數
             records_to_add = [(week_key, member_name)]
             for m_item in missing_weeks:
                 records_to_add.append((m_item["key"], member_name))
             
-            # 寫入簽到紀錄 (請確保您的專案中有定義 add_batch_records 函式)
-            # add_batch_records(records_to_add)
+            add_batch_records(records_to_add)
             
             if missing_weeks:
                 st.toast(f"🎉 簽到成功！已一併補齊過往 {len(missing_weeks)} 週進度！")
@@ -126,18 +150,93 @@ def confirm_checkin_dialog(member_name, week_display, week_key, missing_weeks):
             st.rerun()
 
 # ==========================================
-# 5. 主程式載入測試範例
+# 4. 主程式導覽與頁面配置
 # ==========================================
-def main():
-    st.title("📖 四年精讀聖經運動簽到系統")
-    
-    # 測試載入雲端經文
-    st.subheader("本週導讀經文預覽")
-    df_verses = load_verses_from_cloud()
-    if not df_verses.empty:
-        st.dataframe(df_verses, use_container_width=True)
-    else:
-        st.warning("目前尚無經文資料或尚未設定雲端連結。")
+st.title("📖 四年精讀聖經運動簽到系統")
 
-if __name__ == "__main__":
-    main()
+page = st.sidebar.selectbox("請選擇功能分頁：", ["👤 會友個人簽到專頁", "📊 進度查詢與導讀閱覽"])
+
+df_attendance = load_attendance_data()
+
+# ------------------------------------------
+# 分頁一：會友個人簽到專頁
+# ------------------------------------------
+if page == "👤 會友個人簽到專頁":
+    st.sidebar.markdown("---")
+    member_name = st.selectbox("請選擇您的姓名：", INITIAL_MEMBERS)
+    
+    st.markdown(f"## 👤 {member_name} 的讀經專頁")
+    
+    current_week_num = 36
+    current_week_key = f"Y2-W{current_week_num:02d}"
+    current_week_display = f"第 2 年 - 第 {current_week_num} 週"
+    
+    st.markdown(f"### 📍 【本週進度】{current_week_display}")
+    
+    is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
+    
+    missing_weeks_info = []
+    for w in range(1, current_week_num):
+        w_key = f"Y2-W{w:02d}"
+        checked = not df_attendance[(df_attendance["week_key"] == w_key) & (df_attendance["member_name"] == member_name)].empty
+        if not checked:
+            missing_weeks_info.append({"key": w_key, "display": f"W{w:02d}"})
+
+    if is_signed:
+        st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
+    else:
+        if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
+            confirm_checkin_dialog(member_name, current_week_display, current_week_key, missing_weeks_info)
+
+# ------------------------------------------
+# 分頁二：進度查詢與導讀閱覽 (含 Word 滾輪檢視)
+# ------------------------------------------
+elif page == "📊 進度查詢與導讀閱覽":
+    st.markdown("## 📊 讀經進度查詢與每週導讀")
+    
+    selected_week_num = st.selectbox("請選擇欲查詢的週數：", list(range(1, 44)), index=31) # 預設第32週
+    selected_week_key = f"Y2-W{selected_week_num:02d}"
+    
+    st.markdown(f"### 📖 第 {selected_week_num} 週 讀經導讀內容")
+    
+    view_mode = st.radio(
+        "請選擇檢視模式：",
+        ["📜 全文導讀", "📅 按天切換閱讀 (Day 1 - Day 7)"],
+        horizontal=True
+    )
+
+    with st.spinner("正在從雲端硬碟讀取導讀文件中..."):
+        doc_content = fetch_docx_content(selected_week_num)
+
+    if not doc_content:
+        st.info(f"💡 雲端硬碟中尚無第 {selected_week_num} 週的導讀 Word 文件。")
+    else:
+        display_text = doc_content
+        
+        if view_mode == "📅 按天切換閱讀 (Day 1 - Day 7)":
+            selected_day = st.selectbox(
+                "選擇天數：",
+                [f"第 {i} 天" for i in range(1, 8)]
+            )
+            st.caption("💡 提示：導讀 Word 檔為全週彙整，您也可以切換至「全文導讀」透過滾輪流暢瀏覽完整內容。")
+
+        # 獨立捲軸的文字閱覽框
+        st.markdown(
+            f"""
+            <div style="
+                height: 400px; 
+                overflow-y: scroll; 
+                background-color: #f8f9fa; 
+                padding: 18px; 
+                border-radius: 8px; 
+                border: 1px solid #d0d0d0;
+                line-height: 1.8;
+                font-size: 15px;
+                color: #2c3e50;
+                white-space: pre-wrap;
+            ">
+                {display_text}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
