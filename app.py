@@ -33,9 +33,16 @@ MEMBERS = [
 @st.cache_resource
 def get_drive_service():
     scopes = ["https://www.googleapis.com/auth/drive.readonly"]
-    creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"], scopes=scopes
-    )
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    if "private_key" in creds_dict:
+        pk = creds_dict["private_key"].replace("\\n", "\n")
+        if not pk.startswith("-----BEGIN PRIVATE KEY-----"):
+            pk = "-----BEGIN PRIVATE KEY-----\n" + pk
+        if not pk.endswith("-----END PRIVATE KEY-----"):
+            pk = pk + "\n-----END PRIVATE KEY-----"
+        creds_dict["private_key"] = pk.strip()
+
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return build("drive", "v3", credentials=creds)
 
 @st.cache_data(ttl=3600)
