@@ -112,7 +112,7 @@ def upload_img_to_gdrive(file_path, file_name):
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         drive_service = build('drive', 'v3', credentials=creds)
 
-        # 取得 Folder ID 並清理字串（防止傳入完整 URL）
+        # 取得 Folder ID 並清理字串
         folder_id = st.secrets.get("drive_folder_id", None)
         if folder_id and "folders/" in folder_id:
             folder_id = folder_id.split("folders/")[1].split("?")[0]
@@ -122,7 +122,15 @@ def upload_img_to_gdrive(file_path, file_name):
             file_metadata['parents'] = [folder_id]
 
         media = MediaFileUpload(file_path, resumable=True)
-        drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        
+        # 關鍵修正：加入 supportsAllDrives=True，確保檔案能正常上傳至共用資料夾
+        drive_service.files().create(
+            body=file_metadata, 
+            media_body=media, 
+            fields='id',
+            supportsAllDrives=True
+        ).execute()
+        
         logging.info(f"圖片 {file_name} 已成功同步至 Google Drive")
     except Exception as e:
         logging.error(f"Google Drive 圖片上傳失敗: {e}")
