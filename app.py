@@ -6,6 +6,26 @@ import logging
 import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
+import streamlit as st
+
+# ==========================================
+# 簽到二次確認視窗 (Dialog)
+# ==========================================
+@st.dialog("簽到確認")
+def confirm_checkin_dialog(member_name, week_key):
+    st.write(f"👉 確定要為 **{member_name}** 辦理 **{week_key}** 的進度簽到嗎？")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ 確定完成", type="primary", use_container_width=True):
+            # 執行原本的簽到寫入邏輯
+            save_attendance(member_name, week_key)
+            st.success("🎉 簽到成功！")
+            st.rerun()  # 重新整理頁面以更新畫面
+            
+    with col2:
+        if st.button("❌ 取消", use_container_width=True):
+            st.rerun()  # 關閉彈窗
 
 # 設定 Logging 紀錄
 logging.basicConfig(level=logging.INFO)
