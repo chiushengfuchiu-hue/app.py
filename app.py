@@ -280,7 +280,7 @@ st.set_page_config(page_title="四年精讀聖經運動簽到系統", page_icon=
 # 2. 資料庫與邏輯處理
 # ==========================================
 def load_attendance():
-    if os.path.exists(ATTENDANCE_FILE):
+    if os.path.exists(ATTENDANCE_FILE):
         try:
             df = pd.read_csv(ATTENDANCE_FILE, dtype=str)
             for col in ["week_key", "member_name", "timestamp"]:
