@@ -6,6 +6,26 @@ import logging
 import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
+import streamlit as st
+
+# ==========================================
+# 簽到二次確認視窗 (Dialog)
+# ==========================================
+@st.dialog("簽到確認")
+def confirm_checkin_dialog(member_name, week_key):
+    st.write(f"👉 確定要為 **{member_name}** 辦理 **{week_key}** 的進度簽到嗎？")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ 確定完成", type="primary", use_container_width=True):
+            # 執行原本的簽到寫入邏輯
+            save_attendance(member_name, week_key)
+            st.success("🎉 簽到成功！")
+            st.rerun()  # 重新整理頁面以更新畫面
+            
+    with col2:
+        if st.button("❌ 取消", use_container_width=True):
+            st.rerun()  # 關閉彈窗
 
 # 設定 Logging 紀錄
 logging.basicConfig(level=logging.INFO)
@@ -462,7 +482,14 @@ with tab_user:
         if is_signed:
             st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
         else:
-            if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
+            # 假設 current_member 是目前選取的會友名稱
+            # current_week 是目前要簽到的最新週次 (例如: "Y2-W36")
+
+            st.subheader(f"最新進度：{current_week}")
+
+            # 點擊按鈕後不直接簽到，而是開啟確認視窗
+            if st.button(f"按此完成 {current_week} 簽到", type="primary"):
+                confirm_checkin_dialog(current_member, current_week)
                 # 準備要新增的紀錄：包含當週 + 所有過往尚未簽到的週數（自動補簽）
                 records_to_add = [(current_week_key, member_name)]
                 for m_item in missing_weeks_info:
