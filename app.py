@@ -637,7 +637,8 @@ with tab_admin:
             if uploaded_img is not None:
                 if st.button("⬆️ 儲存並發布此進度表"):
                     save_schedule_record(up_week_key, uploaded_img)
-                    st.success(f"🎉【{up_week_key}】進度表圖片已成功上傳並備份至 Google Drive！")
+                    # 不要立即 st.rerun()，讓使用者看得見成功或失敗的訊息
+                    st.success(f"🎉【{up_week_key}】進度表圖片已處理完成！")
                     st.rerun()
 
             cur_img = get_schedule_image_path(up_week_key)
