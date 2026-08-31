@@ -3,10 +3,12 @@ import pandas as pd
 import datetime
 import os
 import logging
+import io
+import docx
 import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
-import streamlit as st
+from googleapiclient.discovery import build
 
 # ==========================================
 # 簽到二次確認彈窗
@@ -21,12 +23,10 @@ def confirm_checkin_dialog(member_name, week_display, week_key, missing_weeks):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("✅ 確定簽到", type="primary", use_container_width=True):
-            # 彙整當週與過往未簽週數
             records_to_add = [(week_key, member_name)]
             for m_item in missing_weeks:
                 records_to_add.append((m_item["key"], member_name))
             
-            # 寫入簽到紀錄
             add_batch_records(records_to_add)
             
             if missing_weeks:
@@ -50,6 +50,7 @@ logging.basicConfig(level=logging.INFO)
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
+GUIDE_FOLDER_ID = "1-RkVxCZy9wS_2X6Huw5p2mWhv1b6l0HM"
 
 ADMIN_PASSWORD = st.secrets.get("admin_password", "11190928")
 PLAN_YEAR = 2
@@ -88,6 +89,47 @@ def get_gcp_credentials():
 
     return Credentials.from_service_account_info(creds_dict, scopes=scope)
 
+@st.cache_resource
+def get_drive_service():
+    creds = get_gcp_credentials()
+    if not creds:
+        return None
+    scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+    scoped_creds = creds.with_scopes(scopes)
+    return build("drive", "v3", credentials=scoped_creds)
+
+@st.cache_data(ttl=3600)
+def fetch_docx_content(week_num):
+    """從雲端硬碟導讀資料夾讀取對應週數的 Word 檔案內容"""
+    try:
+        service = get_drive_service()
+        if not service:
+            return None
+        query = f"'{GUIDE_FOLDER_ID}' in parents and name contains '{week_num}' and trashed = false"
+        results = service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+        files = results.get("files", [])
+        
+        target_file = None
+        for f in files:
+            if f["name"].startswith(str(week_num)) or f"W{week_num:02d}" in f["name"] or f"第{week_num}周" in f["name"]:
+                target_file = f
+                break
+        
+        if not target_file and files:
+            target_file = files[0]
+                
+        if not target_file:
+            return None
+
+        request = service.files().get_media(fileId=target_file["id"])
+        file_bytes = io.BytesIO(request.execute())
+        
+        doc = docx.Document(file_bytes)
+        full_text = [p.text for p in doc.paragraphs if p.text.strip() != ""]
+        return "\n\n".join(full_text)
+    except Exception as e:
+        return f"⚠️ 讀取導讀檔案時發生錯誤：{e}"
+
 # ==========================================
 # 3. Google Drive 動態抓取圖片網址 (帶年份)
 # ==========================================
@@ -101,7 +143,6 @@ def get_gdrive_image_url(year_num, week_num):
         if not creds:
             return None
         
-        from googleapiclient.discovery import build
         drive_service = build('drive', 'v3', credentials=creds)
 
         folder_id = st.secrets.get("drive_folder_id", None)
@@ -369,7 +410,7 @@ st.title(f"📖 最新讀經進度表（{current_week_display}）")
 
 tab_user, tab_history, tab_admin = st.tabs([
     "✍️ 會友簽到專區", 
-    "🗓️ 過往進度查詢", 
+    "🗓️ 過往進度與導讀查詢", 
     "🔒 後台統計管理"
 ])
 
@@ -478,10 +519,8 @@ with tab_user:
 
         st.markdown(f"## 👤 {member_name} 的讀經專頁")
         
-        # 取得該會友目前已簽到的所有週數
         signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist()
         
-        # 找出過往未完成的週數資訊
         missing_weeks_info = []
         for w in range(1, current_week_num):
             w_key = f"Y{PLAN_YEAR}-W{w:02d}"
@@ -496,11 +535,9 @@ with tab_user:
         if is_signed:
             st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
         else:
-            # 點擊後開啟確認彈窗，帶入正確的變數
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
                 confirm_checkin_dialog(member_name, current_week_display, current_week_key, missing_weeks_info)
                 
-                # 準備要新增的紀錄：包含當週 + 所有過往尚未簽到的週數（自動補簽）
                 records_to_add = [(current_week_key, member_name)]
                 for m_item in missing_weeks_info:
                     records_to_add.append((m_item["key"], member_name))
@@ -552,10 +589,10 @@ with tab_user:
         st.markdown(f"💬 **心靈補給**：{verse_info['encouragement']}")
 
 # ------------------------------------------
-# TAB 2: 獨立過往讀經進度查詢頁面
+# TAB 2: 獨立過往讀經進度查詢與 Word 導讀頁面
 # ------------------------------------------
 with tab_history:
-    st.markdown("### 🗓️ 歷史讀經進度表查詢")
+    st.markdown("### 🗓️ 歷史讀經進度表與導讀查詢")
 
     col_y, col_w = st.columns([1, 2])
     with col_y:
@@ -574,6 +611,52 @@ with tab_history:
         st.image(history_img_url, caption=f"【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】進度對照表", use_container_width=True)
     else:
         st.warning(f"📌 雲端硬碟中尚未找到【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】的進度表圖片。")
+
+    st.divider()
+    st.markdown(f"### 📖 第 {target_w_num} 週 讀經導讀內容閱覽")
+
+    view_mode = st.radio(
+        "請選擇檢視模式：",
+        ["📜 全文導讀", "📅 按天切換閱讀 (Day 1 - Day 7)"],
+        horizontal=True
+    )
+
+    with st.spinner("正在從雲端硬碟導讀資料夾抓取檔案中..."):
+        doc_content = fetch_docx_content(target_w_num)
+
+    if not doc_content:
+        st.info(f"💡 雲端硬碟導讀資料夾中尚未找到第 {target_w_num} 週的 Word 導讀檔案。")
+    else:
+        display_text = doc_content
+        
+        if view_mode == "📅 按天切換閱讀 (Day 1 - Day 7)":
+            selected_day = st.selectbox(
+                "選擇天數：",
+                [f"第 {i} 天" for i in range(1, 8)]
+            )
+            st.caption("💡 提示：導讀 Word 檔為全週彙整，您也可以隨時切換回「全文導讀」使用滾輪流暢瀏覽。")
+
+        # 獨立捲軸的文字閱覽框
+        st.markdown(
+            f"""
+            <div style="
+                height: 450px; 
+                overflow-y: scroll; 
+                background-color: #f8f9fa; 
+                padding: 20px; 
+                border-radius: 10px; 
+                border: 1px solid #cbd5e1;
+                line-height: 1.8;
+                font-size: 16px;
+                color: #1e293b;
+                white-space: pre-wrap;
+                box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+            ">
+                {display_text}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
 # ------------------------------------------
 # TAB 3: 後台統計與管理
