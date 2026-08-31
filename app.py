@@ -3,27 +3,22 @@ import pandas as pd
 import datetime
 import os
 import logging
-import base64
 import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
 
-# 設定 Logging 紀錄，方便背景除錯
+# 設定 Logging 紀錄
 logging.basicConfig(level=logging.INFO)
 
 # ==========================================
-# 1. 檔案與基礎設定
+# 1. 基礎設定與常數
 # ==========================================
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
-SCHEDULE_RECORD_FILE = "schedule_records.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
-SCHEDULE_DIR = "schedules_img"
 
 ADMIN_PASSWORD = st.secrets.get("admin_password", "11190928")
 PLAN_YEAR = 2
-
-os.makedirs(SCHEDULE_DIR, exist_ok=True)
 
 INITIAL_MEMBERS = [
     "周寶燕", "曾笑", "黃然玉", "吳妃玉", "楊游美麗", 
@@ -59,6 +54,54 @@ def get_gcp_credentials():
 
     return Credentials.from_service_account_info(creds_dict, scopes=scope)
 
+# ==========================================
+# 3. Google Drive 動態抓取圖片網址
+# ==========================================
+@st.cache_data(ttl=300)
+def get_gdrive_image_url(week_num):
+    """
+    根據週數（例如 34），自動比對 Google Drive 資料夾中包含 '第34周' 或 '第34週' 的圖片
+    """
+    try:
+        creds = get_gcp_credentials()
+        if not creds:
+            return None
+        
+        from googleapiclient.discovery import build
+        drive_service = build('drive', 'v3', credentials=creds)
+
+        folder_id = st.secrets.get("drive_folder_id", None)
+        if not folder_id:
+            return None
+            
+        if "folders/" in folder_id:
+            folder_id = folder_id.split("folders/")[1].split("?")[0]
+
+        search_term_1 = f"第{week_num}周"
+        search_term_2 = f"第{week_num}週"
+
+        query = f"'{folder_id}' in parents and (name contains '{search_term_1}' or name contains '{search_term_2}') and trashed = false"
+        
+        results = drive_service.files().list(
+            q=query, 
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+
+        files = results.get('files', [])
+        if files:
+            file_id = files[0]['id']
+            return f"https://lh3.googleusercontent.com/d/{file_id}"
+            
+    except Exception as e:
+        logging.error(f"從 Google Drive 搜尋第 {week_num} 週圖片失敗: {e}")
+    
+    return None
+
+# ==========================================
+# 4. 資料庫與簽到邏輯
+# ==========================================
 def load_attendance():
     if os.path.exists(ATTENDANCE_FILE):
         try:
@@ -76,15 +119,6 @@ def load_attendance():
 def save_attendance(df):
     df.to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8-sig")
 
-def delete_single_record(week_key, member_name):
-    df = load_attendance()
-    week_key = str(week_key).strip()
-    member_name = str(member_name).strip()
-
-    df_new = df[~((df["week_key"] == week_key) & (df["member_name"] == member_name))]
-    save_attendance(df_new)
-    return True
-
 def sync_to_gsheet_async(new_rows_list):
     try:
         creds = get_gcp_credentials()
@@ -96,84 +130,6 @@ def sync_to_gsheet_async(new_rows_list):
         sheet.append_rows(new_rows_list)
     except Exception as e:
         logging.error(f"Google Sheets 同步失敗: {e}")
-
-# ==========================================
-# 方案一：進度表圖片 Base64 備份至 Google Sheet
-# ==========================================
-def backup_schedule_to_gsheet(file_path, week_key):
-    """將圖片轉換為 Base64 字串並備份至 Google Sheet 中的 Schedule_Backup 分頁"""
-    try:
-        creds = get_gcp_credentials()
-        if not creds:
-            return
-        client = gspread.authorize(creds)
-        sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
-        sh = client.open(sheet_name)
-        
-        # 取得或新增 Schedule_Backup 工作表
-        try:
-            ws = sh.worksheet("Schedule_Backup")
-        except Exception:
-            ws = sh.add_worksheet(title="Schedule_Backup", rows="100", cols="3")
-            ws.append_row(["week_key", "base64_data", "updated_at"])
-
-        with open(file_path, "rb") as image_file:
-            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # 搜尋是否已經備份過該週，有則更新，無則新增
-        try:
-            cell = ws.find(week_key)
-            if cell:
-                ws.update_cell(cell.row, 2, encoded_string)
-                ws.update_cell(cell.row, 3, now_str)
-            else:
-                ws.append_row([week_key, encoded_string, now_str])
-        except Exception:
-            ws.append_row([week_key, encoded_string, now_str])
-
-        logging.info(f"進度表 {week_key} 已成功同步備份至 Google Sheet！")
-    except Exception as e:
-        logging.error(f"Google Sheet 進度表備份失敗: {e}")
-        st.error(f"⚠️ 進度表備份至 Google Sheet 失敗: {e}")
-
-def restore_schedules_from_gsheet():
-    """啟動時自動檢查：如果本地缺少圖片，自動從 Google Sheet 還原"""
-    try:
-        creds = get_gcp_credentials()
-        if not creds:
-            return
-        client = gspread.authorize(creds)
-        sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
-        sh = client.open(sheet_name)
-        
-        try:
-            ws = sh.worksheet("Schedule_Backup")
-        except Exception:
-            return
-
-        records = ws.get_all_records()
-        df_s = pd.read_csv(SCHEDULE_RECORD_FILE) if os.path.exists(SCHEDULE_RECORD_FILE) else pd.DataFrame(columns=["week_key", "image_path"])
-
-        for row in records:
-            w_key = str(row.get("week_key", "")).strip()
-            b64_str = row.get("base64_data", "")
-            if w_key and b64_str:
-                file_path = os.path.join(SCHEDULE_DIR, f"{w_key}.png")
-                if not os.path.exists(file_path):
-                    with open(file_path, "wb") as f:
-                        f.write(base64.b64decode(b64_str))
-                    
-                    df_s = df_s[df_s["week_key"] != w_key]
-                    df_s = pd.concat([df_s, pd.DataFrame([{"week_key": w_key, "image_path": file_path}])], ignore_index=True)
-
-        df_s.to_csv(SCHEDULE_RECORD_FILE, index=False, encoding="utf-8-sig")
-    except Exception as e:
-        logging.error(f"從 Google Sheet 還原圖片失敗: {e}")
-
-# 程式啟動時自動執行備份還原檢查
-restore_schedules_from_gsheet()
 
 def add_single_record(week_key, member_name):
     df = load_attendance()
@@ -187,6 +143,14 @@ def add_single_record(week_key, member_name):
         df = pd.concat([df, new_row], ignore_index=True)
         save_attendance(df)
         sync_to_gsheet_async([[week_key, member_name, now_str]])
+    return True
+
+def delete_single_record(week_key, member_name):
+    df = load_attendance()
+    week_key = str(week_key).strip()
+    member_name = str(member_name).strip()
+    df_new = df[~((df["week_key"] == week_key) & (df["member_name"] == member_name))]
+    save_attendance(df_new)
     return True
 
 def load_members():
@@ -226,60 +190,11 @@ def get_weekly_verse(week_num):
             pass
     return fallback
 
-def get_schedule_image_path(week_key):
-    if os.path.exists(SCHEDULE_RECORD_FILE):
-        try:
-            df_s = pd.read_csv(SCHEDULE_RECORD_FILE)
-            match = df_s[df_s["week_key"] == week_key]
-            if not match.empty:
-                img_path = match.iloc[0]["image_path"]
-                if os.path.exists(img_path): return img_path
-        except Exception: pass
-    return None
-
-def save_schedule_record(week_key, uploaded_file):
-    file_extension = uploaded_file.name.split(".")[-1]
-    file_name = f"{week_key}.{file_extension}"
-    file_path = os.path.join(SCHEDULE_DIR, file_name)
-    
-    # 1. 儲存在本地伺服器
-    with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-
-    # 2. 備份圖檔至 Google Sheet 試算表
-    backup_schedule_to_gsheet(file_path, week_key)
-
-    # 3. 更新本地紀錄 CSV
-    df_s = pd.read_csv(SCHEDULE_RECORD_FILE) if os.path.exists(SCHEDULE_RECORD_FILE) else pd.DataFrame(columns=["week_key", "image_path"])
-    df_s = df_s[df_s["week_key"] != week_key]
-    df_s = pd.concat([df_s, pd.DataFrame([{"week_key": week_key, "image_path": file_path}])], ignore_index=True)
-    df_s.to_csv(SCHEDULE_RECORD_FILE, index=False, encoding="utf-8-sig")
-
-def get_latest_uploaded_week_key():
-    if os.path.exists(SCHEDULE_RECORD_FILE):
-        try:
-            df_s = pd.read_csv(SCHEDULE_RECORD_FILE)
-            valid_weeks = []
-            for _, row in df_s.iterrows():
-                if os.path.exists(str(row["image_path"])):
-                    w_key = str(row["week_key"]).strip()
-                    if w_key.startswith(f"Y{PLAN_YEAR}-W"):
-                        try:
-                            w_num = int(w_key.split("-W")[1])
-                            valid_weeks.append(w_num)
-                        except Exception:
-                            pass
-            if valid_weeks:
-                max_w = max(valid_weeks)
-                return f"Y{PLAN_YEAR}-W{max_w:02d}", max_w
-        except Exception:
-            pass
-
+def get_current_week_num():
     now = datetime.datetime.now()
     is_sunday = (now.weekday() == 6)
     calc_date = now + datetime.timedelta(days=1) if is_sunday else now
-    current_week_num = calc_date.isocalendar()[1]
-    return f"Y{PLAN_YEAR}-W{current_week_num:02d}", current_week_num
+    return calc_date.isocalendar()[1]
 
 def generate_pivot_report(target_year, max_week):
     df_att = load_attendance()
@@ -309,7 +224,7 @@ def generate_pivot_report(target_year, max_week):
     return df_report[cols_order]
 
 # ==========================================
-# 3. CSS 樣式美化
+# 5. CSS 樣式
 # ==========================================
 st.markdown("""
     <style>
@@ -391,12 +306,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 4. 主程式介面
+# 6. 主介面
 # ==========================================
 if "current_member" not in st.session_state:
     st.session_state.current_member = None
 
-current_week_key, current_week_num = get_latest_uploaded_week_key()
+current_week_num = get_current_week_num()
+current_week_key = f"Y{PLAN_YEAR}-W{current_week_num:02d}"
 current_week_display = f"第 {PLAN_YEAR} 年 - 第 {current_week_num:02d} 週"
 
 df_members = load_members()
@@ -415,11 +331,11 @@ tab_user, tab_history, tab_admin = st.tabs([
 # TAB 1: 會友簽到區
 # ------------------------------------------
 with tab_user:
-    current_img_path = get_schedule_image_path(current_week_key)
-    if current_img_path:
-        st.image(current_img_path, caption=f"【最新進度】{current_week_display}", use_container_width=True)
+    current_img_url = get_gdrive_image_url(current_week_num)
+    if current_img_url:
+        st.image(current_img_url, caption=f"【最新進度】{current_week_display}", use_container_width=True)
     else:
-        st.info(f"📌 目前為【{current_week_display}】簽到。")
+        st.info(f"📌 目前為【{current_week_display}】簽到（雲端硬碟尚未找到第 {current_week_num} 週進度表）。")
 
     st.markdown("<div id='divider-top-anchor'></div>", unsafe_allow_html=True)
     st.divider()
@@ -538,7 +454,7 @@ with tab_user:
             w_key = f"Y{PLAN_YEAR}-W{w:02d}"
             w_display = f"第 {PLAN_YEAR} 年 - 第 {w:02d} 週"
             if w_key not in signed_weeks:
-                missing_weeks_info.append({"key": w_key, "display": w_display})
+                missing_weeks_info.append({"key": w_key, "display": w_display, "week_num": w})
 
         if missing_weeks_info:
             st.warning(f"📌 共有 **{len(missing_weeks_info)}** 週尚未完成，點擊按鈕補簽：")
@@ -586,13 +502,12 @@ with tab_history:
         selected_w_label = st.selectbox("請選擇週數：", week_options, index=0)
         target_w_num = int(selected_w_label.replace("第 ", "").replace(" 週", ""))
 
-    selected_week_key = f"Y{target_y_num}-W{target_w_num:02d}"
-    selected_img_path = get_schedule_image_path(selected_week_key)
+    history_img_url = get_gdrive_image_url(target_w_num)
 
-    if selected_img_path:
-        st.image(selected_img_path, caption=f"【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】進度對照表", use_container_width=True)
+    if history_img_url:
+        st.image(history_img_url, caption=f"【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】進度對照表", use_container_width=True)
     else:
-        st.warning(f"📌 目前尚未上傳【Y{target_y_num}-W{target_w_num:02d}】的進度表圖片。")
+        st.warning(f"📌 雲端硬碟中尚未找到【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】的進度表圖片。")
 
 # ------------------------------------------
 # TAB 3: 後台統計與管理
@@ -604,9 +519,8 @@ with tab_admin:
     if pwd == ADMIN_PASSWORD:
         st.success("🔓 驗證成功，歡迎進入後台管理系統！")
 
-        admin_sub_tab1, admin_sub_tab2, admin_sub_tab3 = st.tabs([
+        admin_sub_tab1, admin_sub_tab2 = st.tabs([
             "📊 簽到進度總覽與匯出", 
-            "🗓️ 上傳跨年進度表圖片", 
             "👥 會友名單編輯"
         ])
 
@@ -668,31 +582,6 @@ with tab_admin:
                     st.rerun()
 
         with admin_sub_tab2:
-            st.markdown("### 🗓️ 上傳/更換進度表圖片（含歷史年份）")
-
-            up_col1, up_col2 = st.columns(2)
-            with up_col1:
-                up_year = st.number_input("選擇年份 (如: 1代表第1年, 2代表第2年)：", min_value=1, max_value=4, value=PLAN_YEAR)
-            with up_col2:
-                default_up_week = min(52, current_week_num + 1)
-                up_week = st.number_input("選擇週數 (1~52)：", min_value=1, max_value=52, value=default_up_week)
-
-            up_week_key = f"Y{up_year}-W{up_week:02d}"
-
-            uploaded_img = st.file_uploader(f"請上傳【第 {up_year} 年 - 第 {up_week:02d} 週】進度對照表圖檔：", type=["png", "jpg", "jpeg"])
-
-            if uploaded_img is not None:
-                if st.button("⬆️ 儲存並發布此進度表"):
-                    save_schedule_record(up_week_key, uploaded_img)
-                    st.success(f"🎉【{up_week_key}】進度表圖片已成功儲存並同步備份至 Google Sheet！")
-                    st.rerun()
-
-            cur_img = get_schedule_image_path(up_week_key)
-            if cur_img:
-                st.markdown(f"**目前【{up_week_key}】使用的圖片：**")
-                st.image(cur_img, width=400)
-
-        with admin_sub_tab3:
             st.markdown("### 👥 管理會友名單")
             st.write("可在下方文字框中新增或修改會友姓名（每行一位）：")
 
