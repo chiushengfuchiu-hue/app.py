@@ -213,7 +213,11 @@ def display_schedule_image(week_key):
       st.image(img_url, caption=f"週別: {week_key}（來自雲端）")
       return
 
-  st.info(f"尚無【{week_key}】的進度表圖片。")2.service_account import Credentials
+# 修正前（文字黏在一起）：
+# st.info(f"尚無【{week_key}】的進度表圖片。")2.service_account import Credentials
+
+# 修正後（分開為正常的文字輸出與程式邏輯）：
+st.info(f"尚無【{week_key}】的進度表圖片。")
 
 # 設定 Logging 紀錄，方便背景除錯
 logging.basicConfig(level=logging.INFO)
