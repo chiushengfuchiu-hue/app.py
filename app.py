@@ -5,6 +5,7 @@ import os
 import logging
 import gspread
 from google.oauth2.service_account import Credentials
+import streamlit.components.v1 as components
 
 # 設定 Logging 紀錄，方便背景除錯
 logging.basicConfig(level=logging.INFO)
@@ -17,9 +18,11 @@ VERSES_FILE = "verses.csv"
 SCHEDULE_RECORD_FILE = "schedule_records.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
 SCHEDULE_DIR = "schedules_img"
-ADMIN_PASSWORD = "11190928"
 
-PLAN_YEAR = 2 
+# 優先讀取 secrets，若無則使用預設值
+ADMIN_PASSWORD = st.secrets.get("admin_password", "11190928")
+
+PLAN_YEAR = 2
 
 os.makedirs(SCHEDULE_DIR, exist_ok=True)
 
@@ -315,8 +318,6 @@ tab_user, tab_history, tab_admin = st.tabs([
     "🔒 後台統計管理"
 ])
 
-import streamlit.components.v1 as components
-
 # ------------------------------------------
 # TAB 1: 會友簽到區
 # ------------------------------------------
@@ -404,7 +405,8 @@ with tab_user:
                         for name in chunk[:mid]:
                             is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
                             status_icon = "✅" if is_signed else "👤"
-                            if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}", type="secondary", use_container_width=True):
+                            # 修正點：key 加上 _c1 避免重複 KeyError
+                            if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}_c1", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
                                 st.session_state.scroll_target = "divider-top-anchor"
                                 st.rerun()
@@ -413,7 +415,8 @@ with tab_user:
                         for name in chunk[mid:]:
                             is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
                             status_icon = "✅" if is_signed else "👤"
-                            if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}", type="secondary", use_container_width=True):
+                            # 修正點：key 加上 _c2 避免重複 KeyError
+                            if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}_c2", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
                                 st.session_state.scroll_target = "divider-top-anchor"
                                 st.rerun()
@@ -467,14 +470,14 @@ with tab_user:
             mc1, mc2 = st.columns(2)
             with mc1:
                 for item in missing_weeks_info[:mid_m]:
-                    if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}", type="secondary", use_container_width=True):
+                    if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}_c1", type="secondary", use_container_width=True):
                         add_single_record(item["key"], member_name)
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
                         st.session_state.scroll_target = "divider-top-anchor"
                         st.rerun()
             with mc2:
                 for item in missing_weeks_info[mid_m:]:
-                    if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}", type="secondary", use_container_width=True):
+                    if st.button(f"🟡 {item['display']}", key=f"miss_{member_name}_{item['key']}_c2", type="secondary", use_container_width=True):
                         add_single_record(item["key"], member_name)
                         st.toast(f"✅ 已成功補簽 `{item['display']}`！")
                         st.session_state.scroll_target = "divider-top-anchor"
