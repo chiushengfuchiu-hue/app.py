@@ -100,38 +100,29 @@ def get_drive_service():
 
 @st.cache_data(ttl=3600)
 def fetch_docx_content(year_num, week_num):
-    """根據年份與週數，從雲端硬碟導讀資料夾讀取對應的 Word 檔案經文與導讀內容"""
+    """根據年份與週數，從雲端硬碟導讀資料夾精準讀取對應的 Word 檔案經文與導讀內容"""
     try:
         service = get_drive_service()
         if not service:
-            return None
+            return "⚠️ 無法取得 Google Drive 授權連線。"
         
-        actual_year = 2026 - (PLAN_YEAR - year_num)
         query = f"'{GUIDE_FOLDER_ID}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
         files = results.get("files", [])
         
         target_file = None
-        search_terms = [f"第{week_num}周", f"第{week_num}週", f"W{week_num:02d}", f"{week_num}"]
+        # 建立嚴謹的搜尋關鍵字，例如第36週、第36周、W36
+        search_terms = [f"第{week_num}週", f"第{week_num}周", f"W{week_num:02d}"]
         
         for f in files:
             fname = f["name"]
-            # 確保同時符合年份與週數條件（若檔名包含年份或直接對應）
-            match_week = any(term in fname for term in search_terms)
-            match_year = str(actual_year) in fname or f"Y{year_num}" in fname
-            if match_week and (match_year or len(files) < 15):
+            # 檢查檔名是否包含指定的週數關鍵字
+            if any(term in fname for term in search_terms):
                 target_file = f
                 break
         
-        if not target_file and files:
-            # 簡易備案：抓取符合週數的第一個檔案
-            for f in files:
-                if any(term in f["name"] for term in search_terms):
-                    target_file = f
-                    break
-                
         if not target_file:
-            return f"💡 雲端資料夾中找不到第 {year_num} 年第 {week_num:02d} 週的導讀檔案。"
+            return f"💡 雲端資料夾中找不到符合「第 {week_num} 週」（或 W{week_num:02d}）的導讀 Word 檔案，請確認雲端檔名命名格式。"
 
         request = service.files().get_media(fileId=target_file["id"])
         file_bytes = io.BytesIO(request.execute())
@@ -604,13 +595,13 @@ with tab_history:
 
     col_y, col_w = st.columns([1, 2])
     with col_y:
-        selected_year = st.selectbox("請選擇年份：", [f"第 {y} 年 (Y{y})" for y in range(PLAN_YEAR, 0, -1)], index=0)
+        selected_year = st.selectbox("請選擇年份：", [f"第 {y} 年 (Y{y})" for y in range(PLAN_YEAR, 0, -1)], index=0, key="hist_year_sel")
         target_y_num = int(selected_year.split("第 ")[1].split(" 年")[0])
 
     with col_w:
         max_w_display = current_week_num if target_y_num == PLAN_YEAR else 52
         week_options = [f"第 {w:02d} 週" for w in range(max_w_display, 0, -1)]
-        selected_w_label = st.selectbox("請選擇週數：", week_options, index=0)
+        selected_w_label = st.selectbox("請選擇週數：", week_options, index=0, key="hist_week_sel")
         target_w_num = int(selected_w_label.replace("第 ", "").replace(" 週", ""))
 
     history_img_url = get_gdrive_image_url(target_y_num, target_w_num)
@@ -626,23 +617,55 @@ with tab_history:
     view_mode = st.radio(
         "請選擇檢視模式：",
         ["📜 全週導讀總覽", "📅 按天切換閱讀 (Day 1 - Day 7)"],
-        horizontal=True
+        horizontal=True,
+        key="hist_view_mode"
     )
 
-    with st.spinner("正在從雲端硬碟抓取對應週數的導讀經文檔案中..."):
-        doc_content = fetch_docx_content(target_y_num, target_w_num)
+    with st.spinner(f"正在從雲端硬碟抓取第 {target_w_num:02d} 週的導讀經文檔案中..."):
+        full_doc_content = fetch_docx_content(target_y_num, target_w_num)
 
-    if not doc_content:
-        st.info("💡 尚未找到對應的導讀檔案。")
+    if not full_doc_content or "⚠️" in full_doc_content or "💡" in full_doc_content:
+        st.warning(full_doc_content if full_doc_content else "💡 尚未找到對應的導讀檔案。")
     else:
-        display_text = doc_content
+        display_text = full_doc_content
         
         if view_mode == "📅 按天切換閱讀 (Day 1 - Day 7)":
-            selected_day = st.selectbox(
+            selected_day_label = st.selectbox(
                 "選擇天數：",
-                [f"第 {i} 天" for i in range(1, 8)]
+                [f"第 {i} 天 (Day {i})" for i in range(1, 8)],
+                key="hist_day_sel"
             )
-            st.caption("💡 提示：若您的 Word 檔已依每日分段，您可上下捲動下方文字框進行對照閱讀。")
+            target_day_num = int(selected_day_label.split("第 ")[1].split(" 天")[0])
+            
+            lines = full_doc_content.split("\n")
+            filtered_lines = []
+            capturing = False
+            found_any_day_tag = False
+            
+            for line in lines:
+                l_lower = line.lower()
+                if f"day {target_day_num}" in l_lower or f"第{target_day_num}天" in l_lower or f"day{target_day_num}" in l_lower:
+                    found_any_day_tag = True
+                    capturing = True
+                    filtered_lines.append(line)
+                    continue
+                elif capturing:
+                    if any(f"day {d}" in l_lower or f"第{d}天" in l_lower for d in range(1, 8) if d != target_day_num):
+                        capturing = False
+                    else:
+                        filtered_lines.append(line)
+            
+            if found_any_day_tag and filtered_lines:
+                display_text = "\n".join(filtered_lines)
+            else:
+                paragraphs = [p for p in full_doc_content.split("\n\n") if p.strip()]
+                if len(paragraphs) >= 7:
+                    chunk_size_p = max(1, len(paragraphs) // 7)
+                    start_idx = (target_day_num - 1) * chunk_size_p
+                    end_idx = start_idx + chunk_size_p if target_day_num < 7 else len(paragraphs)
+                    display_text = f"💡 [提示：此檔案未發現明確 Day 標題，系統已自動為您擷取第 {target_day_num} 天對應段落]\n\n" + "\n\n".join(paragraphs[start_idx:end_idx])
+                else:
+                    display_text = f"💡 [提示：此檔案內容較短，以下為完整內容對照第 {target_day_num} 天]\n\n" + full_doc_content
 
         # 具備獨立捲軸的文字閱覽框
         st.markdown(
