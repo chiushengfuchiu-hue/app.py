@@ -5,9 +5,9 @@ import os
 import logging
 import gspread
 from google.oauth2.service_account import Credentials
-import streamlit.components.v1 as components
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+import streamlit.components.v1 as components
 
 # 設定 Logging 紀錄，方便背景除錯
 logging.basicConfig(level=logging.INFO)
@@ -65,7 +65,7 @@ def delete_single_record(week_key, member_name):
     df = load_attendance()
     week_key = str(week_key).strip()
     member_name = str(member_name).strip()
-    
+
     df_new = df[~((df["week_key"] == week_key) & (df["member_name"] == member_name))]
     save_attendance(df_new)
     return True
@@ -83,7 +83,7 @@ def sync_to_gsheet_async(new_rows_list):
             if not pk.endswith("-----END PRIVATE KEY-----"):
                 pk = pk + "\n-----END PRIVATE KEY-----"
             creds_dict["private_key"] = pk.strip()
-            
+
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
         sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
@@ -92,12 +92,43 @@ def sync_to_gsheet_async(new_rows_list):
     except Exception as e:
         logging.error(f"Google Sheets 同步失敗: {e}")
 
+def upload_img_to_gdrive(file_path, file_name):
+    """同步上傳圖片檔至 Google Drive 指定資料夾"""
+    try:
+        if "gcp_service_account" not in st.secrets:
+            return
+        
+        scope = ["https://www.googleapis.com/auth/drive"]
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        if "private_key" in creds_dict:
+            pk = creds_dict["private_key"].replace("\\n", "\n")
+            if not pk.startswith("-----BEGIN PRIVATE KEY-----"):
+                pk = "-----BEGIN PRIVATE KEY-----\n" + pk
+            if not pk.endswith("-----END PRIVATE KEY-----"):
+                pk = pk + "\n-----END PRIVATE KEY-----"
+            creds_dict["private_key"] = pk.strip()
+
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        drive_service = build('drive', 'v3', credentials=creds)
+
+        folder_id = st.secrets.get("drive_folder_id", None)
+        
+        file_metadata = {'name': file_name}
+        if folder_id:
+            file_metadata['parents'] = [folder_id]
+
+        media = MediaFileUpload(file_path, resumable=True)
+        drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        logging.info(f"圖片 {file_name} 已成功同步至 Google Drive")
+    except Exception as e:
+        logging.error(f"Google Drive 圖片上傳失敗: {e}")
+
 def add_single_record(week_key, member_name):
     df = load_attendance()
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     week_key = str(week_key).strip()
     member_name = str(member_name).strip()
-    
+
     match = df[(df["week_key"] == week_key) & (df["member_name"] == member_name)]
     if match.empty:
         new_row = pd.DataFrame([{"week_key": week_key, "member_name": member_name, "timestamp": now_str}])
@@ -115,7 +146,7 @@ def load_members():
                 return df_m
         except Exception as e:
             logging.error(f"讀取會友名單失敗: {e}")
-            
+
     df_m = pd.DataFrame({"member_name": INITIAL_MEMBERS})
     df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
     return df_m
@@ -156,9 +187,17 @@ def get_schedule_image_path(week_key):
 
 def save_schedule_record(week_key, uploaded_file):
     file_extension = uploaded_file.name.split(".")[-1]
-    file_path = os.path.join(SCHEDULE_DIR, f"{week_key}.{file_extension}")
+    file_name = f"{week_key}.{file_extension}"
+    file_path = os.path.join(SCHEDULE_DIR, file_name)
+    
+    # 1. 本地儲存
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
+        
+    # 2. 同步上傳至 Google Drive 雲端資料夾
+    upload_img_to_gdrive(file_path, file_name)
+
+    # 3. 更新本地紀錄 CSV
     df_s = pd.read_csv(SCHEDULE_RECORD_FILE) if os.path.exists(SCHEDULE_RECORD_FILE) else pd.DataFrame(columns=["week_key", "image_path"])
     df_s = df_s[df_s["week_key"] != week_key]
     df_s = pd.concat([df_s, pd.DataFrame([{"week_key": week_key, "image_path": file_path}])], ignore_index=True)
@@ -183,7 +222,7 @@ def get_latest_uploaded_week_key():
                 return f"Y{PLAN_YEAR}-W{max_w:02d}", max_w
         except Exception:
             pass
-            
+
     now = datetime.datetime.now()
     is_sunday = (now.weekday() == 6)
     calc_date = now + datetime.timedelta(days=1) if is_sunday else now
@@ -193,26 +232,26 @@ def get_latest_uploaded_week_key():
 def generate_pivot_report(target_year, max_week):
     df_att = load_attendance()
     members = load_members()["member_name"].tolist()
-    
+
     report_data = []
     week_cols = [f"Y{target_year}-W{w:02d}" for w in range(1, max_week + 1)]
-    
+
     for m in members:
         row = {"member_name": m}
         completed_count = 0
         m_signed = set(df_att[df_att["member_name"] == m]["week_key"].tolist())
-        
+
         for w_col in week_cols:
             if w_col in m_signed:
                 row[w_col] = "⚪ 已讀"
                 completed_count += 1
             else:
                 row[w_col] = "❌"
-        
+
         row["完成週數"] = f"{completed_count} / {max_week}"
         row["完成率"] = f"{(completed_count / max_week * 100):.2f}%" if max_week > 0 else "0.00%"
         report_data.append(row)
-        
+
     df_report = pd.DataFrame(report_data)
     cols_order = ["member_name", "完成週數", "完成率"] + week_cols
     return df_report[cols_order]
@@ -224,12 +263,12 @@ st.markdown("""
     <style>
     html, body { max-width: 100vw; overflow-x: hidden; }
     h1 { font-size: clamp(26px, 6vw, 38px) !important; line-height: 1.3 !important; }
-    
+
     div[data-baseweb="tab-list"] {
         gap: 10px !important;
         margin-bottom: 20px !important;
     }
-    
+
     button[data-baseweb="tab"] {
         border-radius: 12px !important;
         padding: 12px 20px !important;
@@ -237,7 +276,7 @@ st.markdown("""
         transition: all 0.2s ease-in-out !important;
         box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
     }
-    
+
     div[data-testid="stTabs"] [role="tab"] p, 
     div[data-testid="stTabs"] [role="tab"] div {
         font-size: clamp(22px, 5.5vw, 28px) !important;
@@ -245,7 +284,7 @@ st.markdown("""
         letter-spacing: 1px !important;
         line-height: 1.3 !important;
     }
-    
+
     button[data-baseweb="tab"]:nth-child(1) { background-color: #ECFDF5 !important; border: 2.5px solid #10B981 !important; }
     button[data-baseweb="tab"]:nth-child(1) p { color: #047857 !important; }
     button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] { background-color: #059669 !important; border-color: #047857 !important; }
@@ -269,7 +308,7 @@ st.markdown("""
         line-height: 1.5 !important;
         color: #1E293B !important;
     }
-    
+
     div[data-testid="stButton"] button {
         width: 100% !important;
         white-space: normal !important;
@@ -330,17 +369,14 @@ with tab_user:
     else:
         st.info(f"📌 目前為【{current_week_display}】簽到。")
 
-    # 1. 專頁頂部橫線與錨點
     st.markdown("<div id='divider-top-anchor'></div>", unsafe_allow_html=True)
     st.divider()
 
-    # 初始化 Session State
     if "scroll_target" not in st.session_state:
         st.session_state.scroll_target = None
     if "open_section" not in st.session_state:
         st.session_state.open_section = None
 
-    # JavaScript 動態自動滑動定位機制
     if st.session_state.scroll_target:
         target_id = st.session_state.scroll_target
         components.html(
@@ -358,56 +394,48 @@ with tab_user:
         )
         st.session_state.scroll_target = None
 
-    # --------------------------------------
-    # 情況 A：未選擇會友（顯示 4 組分區圖框）
-    # --------------------------------------
     if st.session_state.current_member is None:
         st.markdown("<div id='members-list-top'></div>", unsafe_allow_html=True)
         st.markdown("### 👇 請點擊您所屬的分區展開名字列表：")
-        
+
         valid_members = [
             m for m in member_list 
             if m and str(m).strip() and not str(m).startswith("會友")
         ]
-        
+
         chunk_size = 10
         total_valid = len(valid_members)
-        
+
         for i in range(0, total_valid, chunk_size):
             chunk = valid_members[i:i + chunk_size]
             page_num = (i // chunk_size) + 1
-            
+
             if chunk:
                 names_text = "、".join(chunk)
                 is_this_open = (st.session_state.open_section == page_num)
-                
-                # 分區標題圖框
+
                 toggle_icon = "🔽" if is_this_open else "▶️"
                 header_label = f"{toggle_icon} 📦 【第 {page_num} 區】 {names_text}"
-                
+
                 if st.button(header_label, key=f"sec_toggle_{page_num}", type="secondary", use_container_width=True):
                     if is_this_open:
                         st.session_state.open_section = None
                     else:
                         st.session_state.open_section = page_num
-                        # 點擊該區時，將錨點設在該區內部的分割線
                         st.session_state.scroll_target = f"line-anchor-{page_num}"
                     st.rerun()
 
-                # 當該分區被點開時，顯示分割線與名字按鈕
                 if is_this_open:
-                    # 📍 錨點標籤 + 實線：正好介於標題圖框與第一個名字之間
                     st.markdown(f"<div id='line-anchor-{page_num}'></div>", unsafe_allow_html=True)
                     st.divider()
-                    
+
                     col1, col2 = st.columns(2)
                     mid = (len(chunk) + 1) // 2
-                    
+
                     with col1:
                         for name in chunk[:mid]:
                             is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
                             status_icon = "✅" if is_signed else "👤"
-                            # 修正點：key 加上 _c1 避免重複 KeyError
                             if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}_c1", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
                                 st.session_state.scroll_target = "divider-top-anchor"
@@ -417,33 +445,28 @@ with tab_user:
                         for name in chunk[mid:]:
                             is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
                             status_icon = "✅" if is_signed else "👤"
-                            # 修正點：key 加上 _c2 避免重複 KeyError
                             if st.button(f"{status_icon} {name}", key=f"btn_dyn_{page_num}_{name}_c2", type="secondary", use_container_width=True):
                                 st.session_state.current_member = name
                                 st.session_state.scroll_target = "divider-top-anchor"
                                 st.rerun()
 
-    # --------------------------------------
-    # 情況 B：已選擇會友（顯示個人簽到專頁）
-    # --------------------------------------
     else:
         member_name = st.session_state.current_member
-        
+
         if st.button("⬅️ 返回選擇名字列表", type="secondary", use_container_width=True):
             st.session_state.current_member = None
             current_sec = st.session_state.open_section
             if current_sec:
-                # 返回時精準對焦回剛剛那區名字上方的實線
                 st.session_state.scroll_target = f"line-anchor-{current_sec}"
             else:
                 st.session_state.scroll_target = "members-list-top"
             st.rerun()
-            
+
         st.markdown(f"## 👤 {member_name} 的讀經專頁")
         st.markdown(f"### 📍 【本週進度】{current_week_display}")
-        
+
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
-        
+
         if is_signed:
             st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
         else:
@@ -452,23 +475,23 @@ with tab_user:
                 st.toast("🎉 簽到成功！")
                 st.session_state.scroll_target = "divider-top-anchor"
                 st.rerun()
-                
+
         st.divider()
         st.markdown("### 🟡 【補簽未完成進度】")
-        
+
         signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist()
-        
+
         missing_weeks_info = []
         for w in range(1, current_week_num):
             w_key = f"Y{PLAN_YEAR}-W{w:02d}"
             w_display = f"第 {PLAN_YEAR} 年 - 第 {w:02d} 週"
             if w_key not in signed_weeks:
                 missing_weeks_info.append({"key": w_key, "display": w_display})
-        
+
         if missing_weeks_info:
             st.warning(f"📌 共有 **{len(missing_weeks_info)}** 週尚未完成，點擊按鈕補簽：")
             mid_m = (len(missing_weeks_info) + 1) // 2
-            
+
             mc1, mc2 = st.columns(2)
             with mc1:
                 for item in missing_weeks_info[:mid_m]:
@@ -499,21 +522,21 @@ with tab_user:
 # ------------------------------------------
 with tab_history:
     st.markdown("### 🗓️ 歷史讀經進度表查詢")
-    
+
     col_y, col_w = st.columns([1, 2])
     with col_y:
         selected_year = st.selectbox("請選擇年份：", [f"第 {y} 年 (Y{y})" for y in range(PLAN_YEAR, 0, -1)], index=0)
         target_y_num = int(selected_year.split("第 ")[1].split(" 年")[0])
-    
+
     with col_w:
         max_w_display = current_week_num if target_y_num == PLAN_YEAR else 52
         week_options = [f"第 {w:02d} 週" for w in range(max_w_display, 0, -1)]
         selected_w_label = st.selectbox("請選擇週數：", week_options, index=0)
         target_w_num = int(selected_w_label.replace("第 ", "").replace(" 週", ""))
-        
+
     selected_week_key = f"Y{target_y_num}-W{target_w_num:02d}"
     selected_img_path = get_schedule_image_path(selected_week_key)
-    
+
     if selected_img_path:
         st.image(selected_img_path, caption=f"【第 {target_y_num} 年 - 第 {target_w_num:02d} 週】進度對照表", use_container_width=True)
     else:
@@ -525,24 +548,24 @@ with tab_history:
 with tab_admin:
     st.subheader("🔒 管理者控制台")
     pwd = st.text_input("請輸入管理者密碼：", type="password")
-    
+
     if pwd == ADMIN_PASSWORD:
         st.success("🔓 驗證成功，歡迎進入後台管理系統！")
-        
+
         admin_sub_tab1, admin_sub_tab2, admin_sub_tab3 = st.tabs([
             "📊 簽到進度總覽與匯出", 
             "🗓️ 上傳跨年進度表圖片", 
             "👥 會友名單編輯"
         ])
-        
+
         with admin_sub_tab1:
             st.markdown("### 📊 全會友讀經簽到進度總表")
-            
+
             time_range = st.selectbox(
                 "📅 請選擇匯出與統計時間區間：",
                 ["最近 4 週", "第一季 (W01~W13)", "第二季 (W14~W26)", "第三季 (W27~W39)", "第四季 (W40~W52)", "半年 (26 週)", "全年度 (52 週)"]
             )
-            
+
             if time_range == "第一季 (W01~W13)":
                 start_w, end_w = 1, 13
             elif time_range == "第二季 (W14~W26)":
@@ -563,16 +586,16 @@ with tab_admin:
             df_pivot_filtered = df_pivot[target_cols]
 
             st.dataframe(df_pivot_filtered, use_container_width=True, height=400)
-            
+
             csv_bytes = df_pivot_filtered.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-            
+
             st.download_button(
                 label=f"📥 下載【{time_range}】簽到統計 Excel 報表 (CSV)",
                 data=csv_bytes,
                 file_name=f"Church_Attendance_{time_range}_{datetime.datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv"
             )
-            
+
             st.divider()
             st.markdown("#### 🛠️ 誤簽撤銷 / 刪除紀錄區")
             col_del1, col_del2, col_del3, col_del4 = st.columns([2, 2, 2, 1.5])
@@ -594,24 +617,24 @@ with tab_admin:
 
         with admin_sub_tab2:
             st.markdown("### 🗓️ 上傳/更換進度表圖片（含歷史年份）")
-            
+
             up_col1, up_col2 = st.columns(2)
             with up_col1:
                 up_year = st.number_input("選擇年份 (如: 1代表第1年, 2代表第2年)：", min_value=1, max_value=4, value=PLAN_YEAR)
             with up_col2:
                 default_up_week = min(52, current_week_num + 1)
                 up_week = st.number_input("選擇週數 (1~52)：", min_value=1, max_value=52, value=default_up_week)
-                
+
             up_week_key = f"Y{up_year}-W{up_week:02d}"
-            
+
             uploaded_img = st.file_uploader(f"請上傳【第 {up_year} 年 - 第 {up_week:02d} 週】進度對照表圖檔：", type=["png", "jpg", "jpeg"])
-            
+
             if uploaded_img is not None:
                 if st.button("⬆️ 儲存並發布此進度表"):
                     save_schedule_record(up_week_key, uploaded_img)
-                    st.success(f"🎉【{up_week_key}】進度表圖片已成功上傳！系統已自動同步重置為【第 {up_week:02d} 週】簽到頁面！")
+                    st.success(f"🎉【{up_week_key}】進度表圖片已成功上傳並備份至 Google Drive！")
                     st.rerun()
-            
+
             cur_img = get_schedule_image_path(up_week_key)
             if cur_img:
                 st.markdown(f"**目前【{up_week_key}】使用的圖片：**")
@@ -620,10 +643,10 @@ with tab_admin:
         with admin_sub_tab3:
             st.markdown("### 👥 管理會友名單")
             st.write("可在下方文字框中新增或修改會友姓名（每行一位）：")
-            
+
             current_m_text = "\n".join(member_list)
             new_m_text = st.text_area("會友名單列表：", value=current_m_text, height=350)
-            
+
             if st.button("💾 儲存名單變更"):
                 updated_names = [name.strip() for name in new_m_text.split("\n") if name.strip()]
                 save_members(updated_names)
