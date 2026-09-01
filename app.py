@@ -100,7 +100,7 @@ def get_drive_service():
 
 import io
 
-@st.cache_data(ttl=1)
+@st.cache_data(ttl=60)
 def fetch_docx_content(week_num, target_date=None):
     try:
         service = get_drive_service()
