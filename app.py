@@ -106,7 +106,7 @@ def fetch_docx_content(week_num, target_date=None):
         service = get_drive_service()
         if not service:
             return None
-        query = f"'{GUIDE_FOLDER_ID}' in parents and name contains '{week_num}' and trashed = false"
+        query = f"'{GUIDE_FOLDER_ID}' in parents and name contains '{selected_year}' and name contains '{week_num}' and trashed = false"
         results = service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
         files = results.get("files", [])
         
