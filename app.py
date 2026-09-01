@@ -467,7 +467,7 @@ st.title(f"📖 最新讀經進度表（{current_week_display}）")
 
 tab_user, tab_history, tab_admin = st.tabs([
     "✍️ 會友簽到專區", 
-    "🗓️ 過往進度與導讀查詢", 
+    "🗓️ 讀經暨導讀過往進度查詢", 
     "🔒 後台統計管理"
 ])
 
