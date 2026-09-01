@@ -664,6 +664,12 @@ with tab_history:
         st.info(f"💡 雲端硬碟導讀資料夾中尚未找到第 {target_w_num} 週的 Word 導讀檔案。")
     else:
         display_text = doc_content
+        
+        # 💡 新增：如果是「全文導讀」模式，過濾掉不需要看到的標記錨點
+        if view_mode == "📖 全文導讀":
+            import re
+            # 把 [DATE:...]、[END_DATE]、[START_DATE] 等標記用正則表達式清除
+            display_text = re.sub(r'\[(DATE:.*?|END_DATE|START_DATE|.*?_DATE)\]', '', display_text)
             # 獨立捲軸的文字閱覽框
         st.markdown(
             f"""
