@@ -106,8 +106,11 @@ def fetch_docx_content(week_num, target_date=None):
         service = get_drive_service()
         if not service:
             return None
-        # 新的寫法：同時鎖定「年份」與「週數」（例如同時包含 "2025" 和 "36"）
-        query = f"'{GUIDE_FOLDER_ID}' in parents and name contains '{selected_year}' and name contains '{week_num}' and trashed = false"
+        # 確保 week_num 裡面純粹是數字（例如即使傳進來的是 "第36周" 也能萃取出數字 36）
+        clean_week = "".join(filter(str.isdigit, str(week_num)))
+    
+        # 讓 query 同時支援不同的分隔符號（例如 "2025年36周"、"2025-36"、"2025年-第36周"）
+        query = f"'{GUIDE_FOLDER_ID}' in parents and name contains '{selected_year}' and name contains '{clean_week}' and trashed = false"
         results = service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
         files = results.get("files", [])
         
