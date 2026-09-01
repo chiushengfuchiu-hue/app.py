@@ -127,8 +127,16 @@ def fetch_docx_content(week_num, target_date=None):
         st.info(f"🔍 系統目前收到的查詢目標 (target_date) 是：【{target_date}】")
         
         if not target_date:
-            full_text = [p.text for p in doc.paragraphs if p.text.strip() != ""]
-            return "\n\n".join(full_text)
+            import re
+            # 1. 先把 Word 所有非空段落抓出來並組合成一個完整字串
+            full_text = "\n\n".join([p.text for p in doc.paragraphs if p.text.strip() != ""])
+    
+            # 2. 再對這個字串進行標記清除
+            full_text = re.sub(r'\[.*?\]', '', full_text)
+            full_text = re.sub(r'［.*?］', '', full_text)
+    
+            # 3. 回傳清理完的文字
+            return full_text
             
         extracted_lines = []
         is_recording = False
