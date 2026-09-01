@@ -213,6 +213,33 @@ def get_gdrive_image_url(year_num, week_num):
 # 4. 資料庫與簽到邏輯
 # ==========================================
 def load_attendance():
+    """優先從 Google Sheets 讀取最新簽到資料，確保重啟後資料不遺失"""
+    try:
+        creds = get_gcp_credentials()
+        if creds:
+            client = gspread.authorize(creds)
+            sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+            sheet = client.open(sheet_name).sheet1
+            
+            # 取得 Google Sheets 上的所有資料
+            rows = sheet.get_all_records()
+            if rows:
+                df_gs = pd.DataFrame(rows)
+                # 確保欄位名稱正確
+                expected_cols = ["week_key", "member_name", "timestamp"]
+                for col in expected_cols:
+                    if col not in df_gs.columns:
+                        df_gs[col] = ""
+                    else:
+                        df_gs[col] = df_gs[col].astype(str).str.strip()
+                
+                # 同步更新回本機的 CSV 備份
+                df_gs[expected_cols].to_csv(ATTENDANCE_FILE, index=False, encoding="utf-8-sig")
+                return df_gs[expected_cols]
+    except Exception as e:
+        logging.error(f"從 Google Sheets 讀取簽到紀錄失敗，改用本機快取: {e}")
+
+    # 若無法連線 Google Sheets，則退回讀取本機 CSV
     if os.path.exists(ATTENDANCE_FILE):
         try:
             df = pd.read_csv(ATTENDANCE_FILE, dtype=str)
@@ -223,7 +250,8 @@ def load_attendance():
                     df[col] = df[col].astype(str).str.strip()
             return df
         except Exception as e:
-            logging.error(f"讀取簽到紀錄失敗: {e}")
+            logging.error(f"讀取本機簽到紀錄失敗: {e}")
+            
     return pd.DataFrame(columns=["week_key", "member_name", "timestamp"])
 
 def save_attendance(df):
