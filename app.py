@@ -669,7 +669,7 @@ with tab_history:
         if view_mode == "📖 全文導讀":
             import re
             # 把 [DATE:...]、[END_DATE]、[START_DATE] 等標記用正則表達式清除
-            display_text = re.sub(r'\[(DATE:.*?|END_DATE|START_DATE|.*?_DATE)\]', '', display_text)
+            display_text = re.sub(r'\[.*?\]', '', display_text)
             # 獨立捲軸的文字閱覽框
         st.markdown(
             f"""
