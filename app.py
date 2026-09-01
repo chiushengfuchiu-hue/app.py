@@ -122,9 +122,6 @@ def fetch_docx_content(week_num, target_date=None):
         
         doc = docx.Document(file_bytes)
         
-        # 🔍 【除錯小幫手】直接把系統這秒鐘收到的目標日期印在畫面上方
-        st.info(f"🔍 系統目前收到的查詢目標 (target_date) 是：【{target_date}】")
-        
         if not target_date:
             import re
             # 1. 先把 Word 所有非空段落抓出來並組合成一個完整字串
