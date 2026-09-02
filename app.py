@@ -5,6 +5,7 @@ st.set_page_config(
     page_icon="icon.jpg",  # 讓瀏覽器分頁顯示彩繪教堂
     layout="wide"
 )
+
 # 隱藏 Streamlit 預設的選單、GitHub 圖示、頁尾與右上角選單
 hide_streamlit_style = """
 <style>
