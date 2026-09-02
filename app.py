@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit as st
 
 # 隱藏 Streamlit 預設的選單、GitHub 圖示、頁尾與右上角選單
 hide_streamlit_style = """
