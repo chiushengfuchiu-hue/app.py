@@ -737,39 +737,83 @@ with tab_history:
         )
 
 # ------------------------------------------
-# TAB 3: 雲端資料與讀經專區
+# TAB 3: 長者輔助資源 (包含認識經卷與有聲導讀)
 # ------------------------------------------
-with tab_cloud:
-    st.markdown("### 📖 雲端資料與讀經專區")
-    st.write("在此處檢視從 Google Drive 雲端資料夾抓取的讀經相關資源與檔案內容。")
+with tab_resource:
+    st.markdown("### 🎧 長者讀經輔助資源（參考專區）")
+    st.info("💡 這裡提供給長輩與弟兄姊妹作為輔助參考的聲音導讀、經卷介紹與操作提醒，點擊下方按鈕即可參考：")
 
-    drive_service = get_drive_service()
-    if drive_service:
-        try:
-            results = drive_service.files().list(
-                q=f"'{GUIDE_FOLDER_ID}' in parents and trashed = false",
-                pageSize=15,
-                fields="files(id, name, webViewLink)",
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True
-            ).execute()
-            items = results.get('files', [])
+    st.markdown("---")
 
-            if items:
-                st.subheader("📁 Google Drive 導讀資料清單：")
-                for item in items:
-                    st.markdown(f"- [{item['name']}]({item['webViewLink']})")
-            else:
-                st.info("目前在指定雲端資料夾中找不到相關檔案。")
-        except Exception as e:
-            st.error(f"連線 Google Drive 時發生錯誤：{e}")
-    else:
-        st.info("尚未設定完整的 Google 憑證 (`st.secrets`)，目前展示預設的讀經專區範例內容。")
-        st.markdown("""
-        ### 本週讀經進度與靈修重點
-        - **進度範圍**：新約聖經重點章節
-        - **導讀說明**：持續穩定推進小組成員的各項學習與靈修進度。
-        """)
+    # 區塊 1：認識經卷圖框與解說
+    st.markdown("#### 📚 認識聖經經卷與背景")
+    st.markdown("幫助長輩在讀經前快速了解各卷書的作者、寫作背景與核心主題：")
+    
+    col_book1, col_book2 = st.columns(2)
+    with col_book1:
+        st.markdown(
+            """
+            <div style="background-color: #F8FAFC; padding: 15px; border-radius: 10px; border: 2px solid #3B82F6;">
+                <b>📖 舊約經卷導覽與架構</b><br>
+                <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">了解律法書、歷史書、詩歌智慧書與先知書的脈絡與分段。</p>
+                <a href="https://zh.wikipedia.org/wiki/舊約聖經" target="_blank" style="font-weight: bold; color: #2563EB;">👉 檢視舊約經卷介紹</a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with col_book2:
+        st.markdown(
+            """
+            <div style="background-color: #F8FAFC; padding: 15px; border-radius: 10px; border: 2px solid #10B981;">
+                <b>📘 新約經卷導覽與架構</b><br>
+                <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">掌握四福音書、使徒行傳、書信及啟示錄的背景重點。</p>
+                <a href="https://zh.wikipedia.org/wiki/新約聖經" target="_blank" style="font-weight: bold; color: #059669;">👉 檢視新約經卷介紹</a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
+
+    # 區塊 2：聲音導讀資源
+    st.markdown("#### 🎙️ 推薦有聲導讀 / Podcast 資源")
+    st.markdown("若長輩看字較吃力，或是希望在休閒、散步時聆聽經文導讀，可參考以下頻道：")
+    
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        st.markdown(
+            """
+            <div style="background-color: #F3F4F6; padding: 15px; border-radius: 10px; border-left: 5px solid #8B5CF6;">
+                <b>🎧 SoundOn 經卷導讀頻道 (範例一)</b><br>
+                <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">適合長者輕鬆聆聽各卷書背景與重點摘要。</p>
+                <a href="https://soundon.fm" target="_blank" style="font-weight: bold; color: #7C3AED;">👉 點擊前往聆聽</a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with col_r2:
+        st.markdown(
+            """
+            <div style="background-color: #F3F4F6; padding: 15px; border-radius: 10px; border-left: 5px solid #8B5CF6;">
+                <b>📖 聖經經卷背景與導讀 (範例二)</b><br>
+                <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">幫助快速掌握每週讀經進度的核心信息。</p>
+                <a href="https://soundon.fm" target="_blank" style="font-weight: bold; color: #7C3AED;">👉 點擊前往聆聽</a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
+
+    # 區塊 3：實用好幫手與操作提醒
+    st.markdown("#### 📱 長輩操作小撇步")
+    st.markdown(
+        """
+        * **將網頁加到手機桌面**：家人可以協助長輩將這個網頁設定成手機捷徑，點一下圖示就能直接開啓簽到，不用每次都找連結。
+        * **字體放大**：若手機字體太小，可利用手機螢幕的放大功能或直接在瀏覽器設定中放大頁面顯示比例。
+        * **現場協助**：若長輩在操作上有任何困難，歡迎隨時在聚會時請同工協助引導！
+        """
+    )
 
 # ------------------------------------------
 # TAB 4: 後台統計與管理 (第四個頁籤)
