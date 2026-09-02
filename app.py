@@ -23,6 +23,8 @@ import pandas as pd
 import datetime
 import os
 import logging
+import io
+import docx
 import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
@@ -68,6 +70,7 @@ logging.basicConfig(level=logging.INFO)
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
+GUIDE_FOLDER_ID = "1-RkVxCZy9wS_2X6Huw5p2mWhv1b6l0HM"
 
 ADMIN_PASSWORD = st.secrets.get("admin_password", "11190928")
 PLAN_YEAR = 2
@@ -103,6 +106,69 @@ def get_gcp_credentials():
         creds_dict["private_key"] = pk.strip()
 
     return Credentials.from_service_account_info(creds_dict, scopes=scope)
+
+@st.cache_resource
+def get_drive_service():
+    creds = get_gcp_credentials()
+    if not creds:
+        return None
+    scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+    scoped_creds = creds.with_scopes(scopes)
+    return build("drive", "v3", credentials=scoped_creds)
+
+@st.cache_data(ttl=60)
+def fetch_docx_content(week_num, target_date=None, target_year=2):
+    try:
+        service = get_drive_service()
+        if not service:
+            return None
+        clean_week = "".join(filter(str.isdigit, str(week_num)))
+        actual_year = 2026 - (PLAN_YEAR - target_year)
+        query = f"'{GUIDE_FOLDER_ID}' in parents and name contains '{actual_year}' and name contains '{clean_week}' and trashed = false"
+        results = service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+        files = results.get("files", [])
+        
+        target_file = files[0] if files else None
+        if not target_file:
+            return "找不到檔案"
+
+        request = service.files().get_media(fileId=target_file["id"])
+        file_bytes = io.BytesIO(request.execute())
+        
+        doc = docx.Document(file_bytes)
+        
+        if not target_date:
+            import re
+            full_text = "\n\n".join([p.text for p in doc.paragraphs if p.text.strip() != ""])
+            full_text = re.sub(r'\[.*?\]', '', full_text)
+            full_text = re.sub(r'［.*?］', '', full_text)
+            return full_text
+            
+        extracted_lines = []
+        is_recording = False
+        
+        all_paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip() != ""]
+        clean_target = str(target_date).replace(" ", "")
+        
+        for text in all_paragraphs:
+            clean_line = text.replace(" ", "")
+            
+            if f"[DATE:{clean_target}]" in clean_line:
+                is_recording = True
+                continue
+                
+            if is_recording:
+                if "[END_DATE]" in clean_line or ("[DATE:" in clean_line and clean_target not in clean_line):
+                    break
+                extracted_lines.append(text)
+                
+        if extracted_lines:
+            return "\n\n".join(extracted_lines).strip()
+        else:
+            return f"⚠️ 找不到對應 `{target_date}` 的範圍。檔案內的前幾行標記範例：\n\n" + "\n---\n".join(all_paragraphs[:5])
+        
+    except Exception as e:
+        return f"⚠️ 發生錯誤：{e}"
 
 # ==========================================
 # 3. Google Drive 動態抓取圖片網址 (帶年份)
@@ -338,7 +404,7 @@ st.markdown("""
     button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] { background-color: #059669 !important; border-color: #047857 !important; }
     button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] p { color: #FFFFFF !important; }
 
-    /* 頁籤 2: 歷史進度 */
+    /* 頁籤 2: 歷史進度與 Word 導讀 */
     button[data-baseweb="tab"]:nth-child(2) { background-color: #EFF6FF !important; border: 2.5px solid #3B82F6 !important; }
     button[data-baseweb="tab"]:nth-child(2) p { color: #1D4ED8 !important; }
     button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] { background-color: #2563EB !important; border-color: #1D4ED8 !important; }
@@ -410,11 +476,11 @@ df_attendance = load_attendance()
 
 st.title(f"📖 最新讀經進度表（{current_week_display}）")
 
-# 四個頁籤：維持前兩個完美設定，新增第三個長者輔助資源，第四個為後台
-tab_user, tab_history, tab_resource, tab_admin = st.tabs([
+# 四個頁籤：1. 會友簽到, 2. 歷史進度與 Word 導讀, 3. 長者輔助資源, 4. 後台管理
+tab_user, tab_history_guide, tab_resource, tab_admin = st.tabs([
     "✍️ 會友簽到專區", 
-    "🗓️ 歷史進度查詢", 
-    "🎧 讀經輔助資源",
+    "🗓️ 歷史進度與 Word 導讀", 
+    "🎧 長者輔助資源",
     "🔒 後台管理"
 ])
 
@@ -593,10 +659,10 @@ with tab_user:
         st.markdown(f"💬 **心靈補給**：{verse_info['encouragement']}")
 
 # ------------------------------------------
-# TAB 2: 歷史進度查詢
+# TAB 2: 歷史進度查詢與 Word 導讀 (完整保留)
 # ------------------------------------------
-with tab_history:
-    st.markdown("### 🗓️ 歷史讀經進度表查詢")
+with tab_history_guide:
+    st.markdown("### 🗓️ 歷史讀經進度表與 Word 導讀查詢")
 
     col_y, col_w = st.columns([1, 2])
     with col_y:
@@ -616,16 +682,99 @@ with tab_history:
     else:
         st.warning(f"📌 雲端硬碟中尚未找到【第 {target_y_num_h} 年 - 第 {target_w_num_h:02d} 週】的進度表圖片。")
 
+    st.divider()
+    st.markdown("#### 📖 讀經 Word 導讀內容閱覽")
+
+    view_mode = st.radio(
+        "請選擇檢視模式：",
+        ["📜 全文導讀", "📅 按天切換閱讀 (Day 1 - Day 7)"],
+        horizontal=True,
+        key="guide_view_mode"
+    )
+
+    if view_mode == "📅 按天切換閱讀 (Day 1 - Day 7)":
+        selected_day = st.selectbox(
+            "選擇天數：",
+            [f"第 {i} 天" for i in range(1, 8)],
+            key="guide_selected_day"
+        )
+        st.caption("💡 提示：導讀 Word 檔為全週彙整，您也可以隨時切換回「全文導讀」使用滾輪流暢瀏覽。")
+    else:
+        selected_day = None  
+
+    with st.spinner("正在從雲端硬碟導讀資料夾抓取檔案中..."):
+        doc_content = fetch_docx_content(target_w_num_h, target_date=selected_day, target_year=target_y_num_h)
+
+    if not doc_content:
+        st.info(f"💡 雲端硬碟導讀資料夾中尚未找到第 {target_w_num_h} 週的 Word 導讀檔案。")
+    else:
+        display_text = doc_content
+        
+        if view_mode == "📜 全文導讀":
+            import re
+            display_text = re.sub(r'\[.*?\]', '', display_text)
+
+        st.markdown(
+            f"""
+            <div style="
+                height: 450px; 
+                overflow-y: scroll; 
+                background-color: #f8f9fa; 
+                padding: 20px; 
+                border-radius: 10px; 
+                border: 1px solid #cbd5e1;
+                line-height: 1.8;
+                font-size: 16px;
+                color: #1e293b;
+                white-space: pre-wrap;
+                box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+            ">
+                {display_text}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
 # ------------------------------------------
-# TAB 3: 長者輔助資源 (新增的便利頁籤)
+# TAB 3: 長者輔助資源 (包含認識經卷與有聲導讀)
 # ------------------------------------------
 with tab_resource:
     st.markdown("### 🎧 長者讀經輔助資源（參考專區）")
-    st.info("💡 這裡提供給長輩與弟兄姊妹作為輔助參考的聲音導讀與經卷介紹資源，點擊下方按鈕即可聆聽或檢視：")
+    st.info("💡 這裡提供給長輩與弟兄姊妹作為輔助參考的聲音導讀、經卷介紹與操作提醒，點擊下方按鈕即可參考：")
 
     st.markdown("---")
 
-    # 區塊 1：聲音導讀資源
+    # 區塊 1：認識經卷圖框與解說
+    st.markdown("#### 📚 認識聖經經卷與背景")
+    st.markdown("幫助長輩在讀經前快速了解各卷書的作者、寫作背景與核心主題：")
+    
+    col_book1, col_book2 = st.columns(2)
+    with col_book1:
+        st.markdown(
+            """
+            <div style="background-color: #F8FAFC; padding: 15px; border-radius: 10px; border: 2px solid #3B82F6;">
+                <b>📖 舊約經卷導覽與架構</b><br>
+                <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">了解律法書、歷史書、詩歌智慧書與先知書的脈絡與分段。</p>
+                <a href="https://zh.wikipedia.org/wiki/舊約聖經" target="_blank" style="font-weight: bold; color: #2563EB;">👉 檢視舊約經卷介紹</a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with col_book2:
+        st.markdown(
+            """
+            <div style="background-color: #F8FAFC; padding: 15px; border-radius: 10px; border: 2px solid #10B981;">
+                <b>📘 新約經卷導覽與架構</b><br>
+                <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">掌握四福音書、使徒行傳、書信及啟示錄的背景重點。</p>
+                <a href="https://zh.wikipedia.org/wiki/新約聖經" target="_blank" style="font-weight: bold; color: #059669;">👉 檢視新約經卷介紹</a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
+
+    # 區塊 2：聲音導讀資源
     st.markdown("#### 🎙️ 推薦有聲導讀 / Podcast 資源")
     st.markdown("若長輩看字較吃力，或是希望在休閒、散步時聆聽經文導讀，可參考以下頻道：")
     
@@ -636,7 +785,7 @@ with tab_resource:
             <div style="background-color: #F3F4F6; padding: 15px; border-radius: 10px; border-left: 5px solid #8B5CF6;">
                 <b>🎧 SoundOn 經卷導讀頻道 (範例一)</b><br>
                 <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">適合長者輕鬆聆聽各卷書背景與重點摘要。</p>
-                <a href="https://player.soundon.fm/p/28cbcb5d-2a87-4bb8-8b89-a3c2ccae77f8" target="_blank" style="font-weight: bold; color: #7C3AED;">👉 點擊前往聆聽</a>
+                <a href="https://soundon.fm" target="_blank" style="font-weight: bold; color: #7C3AED;">👉 點擊前往聆聽</a>
             </div>
             """,
             unsafe_allow_html=True
@@ -647,7 +796,7 @@ with tab_resource:
             <div style="background-color: #F3F4F6; padding: 15px; border-radius: 10px; border-left: 5px solid #8B5CF6;">
                 <b>📖 聖經經卷背景與導讀 (範例二)</b><br>
                 <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">幫助快速掌握每週讀經進度的核心信息。</p>
-                <a href="https://player.soundon.fm/p/520fefe3-1e30-4024-bcb1-260d1594bdf7" target="_blank" style="font-weight: bold; color: #7C3AED;">👉 點擊前往聆聽</a>
+                <a href="https://soundon.fm" target="_blank" style="font-weight: bold; color: #7C3AED;">👉 點擊前往聆聽</a>
             </div>
             """,
             unsafe_allow_html=True
@@ -655,7 +804,7 @@ with tab_resource:
 
     st.markdown("---")
 
-    # 區塊 2：實用好幫手與操作提醒
+    # 區塊 3：實用好幫手與操作提醒
     st.markdown("#### 📱 長輩操作小撇步")
     st.markdown(
         """
