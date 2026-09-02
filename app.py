@@ -754,9 +754,9 @@ with tab_resource:
         st.markdown(
             """
             <div style="background-color: #F8FAFC; padding: 15px; border-radius: 10px; border: 2px solid #3B82F6;">
-                <b>📖 舊約經卷導覽與架構</b><br>
-                <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">了解律法書、歷史書、詩歌智慧書與先知書的脈絡與分段。</p>
-                <a href="https://zh.wikipedia.org/wiki/舊約聖經" target="_blank" style="font-weight: bold; color: #2563EB;">👉 檢視舊約經卷介紹</a>
+                <b>📖 華人基督徒查經資料網</b><br>
+                <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">提供純正和周詳的查經資料。</p>
+                <a href="https://www.ccbiblestudy.org/index-T.htm" target="_blank" style="font-weight: bold; color: #2563EB;">👉 各經卷拾惠、例證、註解</a>
             </div>
             """,
             unsafe_allow_html=True
