@@ -2,16 +2,19 @@ import streamlit as st
 
 st.set_page_config(
     page_title="四年精讀聖經",
-    page_icon="icon.jpg",  # 讓瀏覽器分頁顯示彩繪教堂
+    page_icon="icon.jpg",
     layout="wide"
 )
 
-# 隱藏 Streamlit 預設的選單、GitHub 圖示、頁尾與右上角選單
+# 使用更強效的新版隱藏語法
 hide_streamlit_style = """
 <style>
+/* 隱藏右上角主選單、頁尾與頂部導覽列 */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
+[data-testid="stHeader"] {visibility: hidden; display: none;}
+[data-testid="stToolbar"] {visibility: hidden; display: none;}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
