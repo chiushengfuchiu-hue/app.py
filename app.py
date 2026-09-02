@@ -1,5 +1,10 @@
 import streamlit as st
 
+st.set_page_config(
+    page_title="四年精讀聖經",
+    page_icon="icon.jpg",  # 讓瀏覽器分頁顯示彩繪教堂
+    layout="wide"
+)
 # 隱藏 Streamlit 預設的選單、GitHub 圖示、頁尾與右上角選單
 hide_streamlit_style = """
 <style>
@@ -9,11 +14,7 @@ header {visibility: hidden;}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-st.set_page_config(
-    page_title="四年精讀聖經",
-    page_icon="icon.jpg",  # 讓瀏覽器分頁顯示彩繪教堂
-    layout="wide"
-)
+
 import pandas as pd
 import datetime
 import os
