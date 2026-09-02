@@ -413,12 +413,12 @@ st.markdown("""
     button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] { background-color: #2563EB !important; border-color: #1D4ED8 !important; }
     button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] p { color: #FFFFFF !important; }
 
-    /* Tab 3: 雲端資料與讀經專區 */
-    button[data-baseweb="tab"]:nth-child(3) { background-color: #F8FAFC !important; border: 2.5px solid #0EA5E9 !important; }
-    button[data-baseweb="tab"]:nth-child(3) p { color: #0369A1 !important; }
-    button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] { background-color: #0284C7 !important; border-color: #0369A1 !important; }
+    /* 頁籤 3: 長者輔助資源 */
+    button[data-baseweb="tab"]:nth-child(3) { background-color: #FAF5FF !important; border: 2.5px solid #8B5CF6 !important; }
+    button[data-baseweb="tab"]:nth-child(3) p { color: #6D28D9 !important; }
+    button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] { background-color: #7C3AED !important; border-color: #6D28D9 !important; }
     button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] p { color: #FFFFFF !important; }
-
+    
     /* Tab 4: 後台統計管理 */
     button[data-baseweb="tab"]:nth-child(4) { background-color: #F8FAFC !important; border: 2.5px solid #64748B !important; }
     button[data-baseweb="tab"]:nth-child(4) p { color: #334155 !important; }
