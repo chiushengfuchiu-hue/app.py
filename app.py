@@ -6,15 +6,17 @@ st.set_page_config(
     layout="wide"
 )
 
-# 使用更強效的新版隱藏語法
+# 徹底隱藏選單、頂部工具列與右下角 Streamlit 浮水印
 hide_streamlit_style = """
 <style>
-/* 隱藏右上角主選單、頁尾與頂部導覽列 */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 header {visibility: hidden;}
 [data-testid="stHeader"] {visibility: hidden; display: none;}
 [data-testid="stToolbar"] {visibility: hidden; display: none;}
+/* 隱藏右下角的 Streamlit 標誌與浮水印 */
+.stAppDeployButton {display: none !important;}
+#root > div:last-child > div:last-child {display: none !important;}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
