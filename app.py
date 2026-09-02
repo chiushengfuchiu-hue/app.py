@@ -767,7 +767,7 @@ with tab_resource:
             <div style="background-color: #F8FAFC; padding: 15px; border-radius: 10px; border: 2px solid #10B981;">
                 <b>📘 認識聖經各經卷SoundOn</b><br>
                 <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">認識每卷書背景與主題，明白上帝的本質與作為。</p>
-                <a href="https://player.soundon.fm/p/49f6e2a8-a4c8-463c-9c97-7d4e4a8a4188" target="_blank" style="font-weight: bold; color: #059669;">👉 檢視新約經卷介紹</a>
+                <a href="https://player.soundon.fm/p/49f6e2a8-a4c8-463c-9c97-7d4e4a8a4188" target="_blank" style="font-weight: bold; color: #059669;">👉 認識聖經經卷系列，點擊聆聽</a>
             </div>
             """,
             unsafe_allow_html=True
