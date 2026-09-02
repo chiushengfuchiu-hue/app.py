@@ -1,0 +1,15 @@
+{
+  "name": "四年精讀聖經",
+  "short_name": "讀經簽到",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0288d1",
+  "icons": [
+    {
+      "src": "/app/static/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
