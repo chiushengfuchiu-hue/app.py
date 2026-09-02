@@ -480,10 +480,10 @@ df_attendance = load_attendance()
 st.title(f"📖 最新讀經進度表（{current_week_display}）")
 
 # 嚴格確保第 1、2 頁籤不變，第 3 頁為雲端資料，第 4 頁為後台
-tab_user, tab_history, tab_cloud, tab_admin = st.tabs([
+tab_user, tab_history, tab_resource, tab_admin = st.tabs([
     "✍️ 會友簽到專區", 
     "🗓️ 讀經暨導讀查詢系統", 
-    "📖 雲端資料與讀經專區",
+    "📖 讀經資源專區",
     "🔒 後台統計管理"
 ])
 
