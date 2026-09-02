@@ -6,17 +6,15 @@ st.set_page_config(
     layout="wide"
 )
 
-# 安全隱藏頂部選單，不影響主畫面
+# 使用更強效的新版隱藏語法
 hide_streamlit_style = """
 <style>
-/* 隱藏右上角主選單與頂部導覽列 */
+/* 隱藏右上角主選單、頁尾與頂部導覽列 */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
 header {visibility: hidden;}
 [data-testid="stHeader"] {visibility: hidden; display: none;}
 [data-testid="stToolbar"] {visibility: hidden; display: none;}
-/* 隱藏預設文字頁尾 */
-footer {visibility: hidden;}
-/* 嘗試安全地隱藏 Deploy 按鈕 */
-.stAppDeployButton {display: none;}
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
