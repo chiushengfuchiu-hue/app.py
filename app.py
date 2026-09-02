@@ -784,9 +784,9 @@ with tab_resource:
         st.markdown(
             """
             <div style="background-color: #F3F4F6; padding: 15px; border-radius: 10px; border-left: 5px solid #8B5CF6;">
-                <b>🎧 SoundOn 經卷導讀頻道 (範例一)</b><br>
-                <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">適合長者輕鬆聆聽各卷書背景與重點摘要。</p>
-                <a href="https://soundon.fm" target="_blank" style="font-weight: bold; color: #7C3AED;">👉 點擊前往聆聽</a>
+                <b>🎧 SoundOn 經卷註解導讀PodCast頻道 </b><br>
+                <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">適合輕鬆聆聽各周進度經卷生活應用、屬靈省司。</p>
+                <a href="https://player.soundon.fm/p/28cbcb5d-2a87-4bb8-8b89-a3c2ccae77f8" target="_blank" style="font-weight: bold; color: #7C3AED;">👉 點擊前往聆聽</a>
             </div>
             """,
             unsafe_allow_html=True
@@ -795,9 +795,9 @@ with tab_resource:
         st.markdown(
             """
             <div style="background-color: #F3F4F6; padding: 15px; border-radius: 10px; border-left: 5px solid #8B5CF6;">
-                <b>📖 聖經經卷背景與導讀 (範例二)</b><br>
+                <b>📖 進度表盧俊義牧師導讀 </b><br>
                 <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">幫助快速掌握每週讀經進度的核心信息。</p>
-                <a href="https://soundon.fm" target="_blank" style="font-weight: bold; color: #7C3AED;">👉 點擊前往聆聽</a>
+                <a href="https://player.soundon.fm/p/520fefe3-1e30-4024-bcb1-260d1594bdf7" target="_blank" style="font-weight: bold; color: #7C3AED;">👉 點擊前往聆聽</a>
             </div>
             """,
             unsafe_allow_html=True
