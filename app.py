@@ -341,11 +341,11 @@ def get_weekly_verse(week_num):
 
 def get_current_year_and_week():
     # ==========================================
-    # 【超級精準錨點】直接用今天（2026/09/04）來鎖定：今天是第 2 年第 37 週
+    # 【週五發布日邏輯】以今天（2026/09/04 星期五）為基準，直接對齊並鎖定為第 2 年第 37 週
     # ==========================================
     known_date = datetime.date(2026, 9, 4)
     known_year = 2
-    known_week = 37
+    known_week = 37  # 星期五一到，立刻顯示第 37 週！
     
     today = datetime.date.today()
     
@@ -356,7 +356,7 @@ def get_current_year_and_week():
     # 計算距離已知基準日經過了幾週
     delta_weeks = (adjusted_today - adjusted_known).days // 7
     
-    # 從已知的年度總週數開始推算（第 2 年第 37 週相當於總共經過了 52 + 36 = 88 週）
+    # 推算總共經過的週數
     total_weeks_passed = (known_year - 1) * 52 + (known_week - 1) + delta_weeks
     total_weeks_passed = max(0, total_weeks_passed)
     
@@ -365,7 +365,6 @@ def get_current_year_and_week():
     current_week = (total_weeks_passed % 52) + 1
     
     return current_year, current_week
-
 def generate_pivot_report(target_year, max_week):
     df_att = load_attendance()
     members = load_members()["member_name"].tolist()
