@@ -343,11 +343,6 @@ def get_current_year_and_week():
     # ==========================================
     # 【核心設定】請設定你們整個讀經計畫「最初開始」的那一天（第1年第1週的週五）
     # ==========================================
-    # 取得當前的年份與週次
-    PLAN_YEAR, current_week_num = get_current_year_and_week()
-
-    # 顯示在畫面上時，就會完美呈現您要的格式：
-    # 例如：畫面標題自動顯示為 「最新讀經進度表 (第 2 年 - 第 37 週)」
     plan_start_friday = datetime.date(2025, 1, 3) # <-- 請填入你們計畫第一天開跑的週五日期
     
     today = datetime.date.today()
@@ -395,6 +390,12 @@ def generate_pivot_report(target_year, max_week):
     df_report = pd.DataFrame(report_data)
     cols_order = ["member_name", "完成週數", "完成率"] + week_cols
     return df_report[cols_order]
+
+# 取得當前的年份與週次
+PLAN_YEAR, current_week_num = get_current_year_and_week()
+
+# 顯示在畫面上時，就會完美呈現您要的格式：
+# 例如：畫面標題自動顯示為 「最新讀經進度表 (第 2 年 - 第 37 週)」
 
 # ==========================================
 # 5. CSS 樣式
