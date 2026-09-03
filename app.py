@@ -341,25 +341,27 @@ def get_weekly_verse(week_num):
 
 def get_current_year_and_week():
     # ==========================================
-    # 【核心設定】請設定你們整個讀經計畫「最初開始」的那一天（第1年第1週的週五）
+    # 【超級精準錨點】直接用今天（2026/09/04）來鎖定：今天是第 2 年第 37 週
     # ==========================================
-    plan_start_friday = datetime.date(2025, 1, 3) # <-- 請填入你們計畫第一天開跑的週五日期
+    known_date = datetime.date(2026, 9, 4)
+    known_year = 2
+    known_week = 37
     
     today = datetime.date.today()
     
     # 讓「禮拜五」成為換週的交界點（減去 4 天讓週五到隔週四為同一週）
     adjusted_today = today - datetime.timedelta(days=4)
-    adjusted_start = plan_start_friday - datetime.timedelta(days=4)
+    adjusted_known = known_date - datetime.timedelta(days=4)
     
-    # 計算從計畫開始到現在總共經過了幾週 (從 0 開始算)
-    total_weeks_passed = (adjusted_today - adjusted_start).days // 7
-    total_weeks_passed = max(0, total_weeks_passed) # 確保不為負數
+    # 計算距離已知基準日經過了幾週
+    delta_weeks = (adjusted_today - adjusted_known).days // 7
     
-    # 計算是「第幾年」（假設一年為 52 週）
-    # 第 0~51 週是第 1 年，第 52~103 週是第 2 年...以此類推
+    # 從已知的年度總週數開始推算（第 2 年第 37 週相當於總共經過了 52 + 36 = 88 週）
+    total_weeks_passed = (known_year - 1) * 52 + (known_week - 1) + delta_weeks
+    total_weeks_passed = max(0, total_weeks_passed)
+    
+    # 還原計算當前年份與週次
     current_year = (total_weeks_passed // 52) + 1
-    
-    # 計算在該年度中的「第幾週」（1 到 52 週）
     current_week = (total_weeks_passed % 52) + 1
     
     return current_year, current_week
