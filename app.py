@@ -342,17 +342,22 @@ def get_weekly_verse(week_num):
 def get_current_year_and_week():
     today = datetime.date.today()
     
-    # 關鍵技巧：把今天往後加 3 天
-    # 這樣只要今天是週五、週六、週日，或是隔週一到週四，
-    # 透過 ISO 週數計算時，就會剛好落在「新的一週」裡！
-    adjusted_today = today + datetime.timedelta(days=3)
+    # 1. 先抓出今天正常日曆是第幾週
+    iso_year, iso_week, weekday = today.isocalendar()
     
-    iso_year, iso_week, _ = adjusted_today.isocalendar()
-    
-    # 設定您的計畫年份與調整後的週數
+    # 2. 您的計畫年份
     current_year = 2
-    current_week = iso_week  # 今天（星期五）加上 3 天後剛好會算出 37 週！
     
+    # 3. 核心強制邏輯：
+    # weekday 的代號是：1=週一, 2=週二, 3=週三, 4=週四, 5=週五, 6=週六, 7=週日
+    # 只要今天是星期五 (5)、星期六 (6) 或星期日 (7)，
+    # 我們就「人為強制」把週數 +1，讓它直接跳到下一週（37週）！
+    # 而下週一 (1) 到週四 (4) 時，因為 weekday < 5，就會維持原本的週數。
+    if weekday >= 5:
+        current_week = iso_week + 1
+    else:
+        current_week = iso_week
+        
     return current_year, current_week
     
 def generate_pivot_report(target_year, max_week):
