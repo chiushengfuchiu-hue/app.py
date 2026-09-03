@@ -749,7 +749,7 @@ with tab_history:
                 border-radius: 10px; 
                 border: 1px solid #cbd5e1;
                 line-height: 1.8;
-                font-size: 16px;
+                font-size: 20px;
                 color: #1e293b;
                 white-space: pre-wrap;
                 box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
