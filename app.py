@@ -342,16 +342,16 @@ def get_weekly_verse(week_num):
 def get_current_year_and_week():
     today = datetime.date.today()
     
-    # 核心邏輯：為了讓「星期五」一到就立刻跳到下一週的進度
-    # 我們把今天的人為日期往後推 3 天來計算 ISO 週數
-    # 這樣只要今天是週五、週六或週日，它就會直接抓到「下一週」的編號！
+    # 關鍵技巧：把今天往後加 3 天
+    # 這樣只要今天是週五、週六、週日，或是隔週一到週四，
+    # 透過 ISO 週數計算時，就會剛好落在「新的一週」裡！
     adjusted_today = today + datetime.timedelta(days=3)
     
     iso_year, iso_week, _ = adjusted_today.isocalendar()
     
-    # 對應您的計畫年份與調整後的週數
+    # 設定您的計畫年份與調整後的週數
     current_year = 2
-    current_week = iso_week  # 經過調整後，今天（星期五）就會剛好算出 37 週！
+    current_week = iso_week  # 今天（星期五）加上 3 天後剛好會算出 37 週！
     
     return current_year, current_week
     
