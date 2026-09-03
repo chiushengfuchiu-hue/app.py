@@ -365,6 +365,7 @@ def get_current_year_and_week():
     current_week = (total_weeks_passed % 52) + 1
     
     return current_year, current_week
+    
 def generate_pivot_report(target_year, max_week):
     df_att = load_attendance()
     members = load_members()["member_name"].tolist()
