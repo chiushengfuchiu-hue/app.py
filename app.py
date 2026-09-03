@@ -498,6 +498,7 @@ if "current_member" not in st.session_state:
 
 # 確保呼叫時都是這樣寫：
 PLAN_YEAR, current_week_num = get_current_year_and_week()
+
 current_week_key = f"Y{PLAN_YEAR}-W{current_week_num:02d}"
 current_week_display = f"第 {PLAN_YEAR} 年 - 第 {current_week_num:02d} 週"
 
