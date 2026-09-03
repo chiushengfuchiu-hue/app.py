@@ -390,7 +390,7 @@ def generate_pivot_report(target_year, max_week):
 PLAN_YEAR, current_week_num = get_current_year_and_week()
 
 # 🔍 測試燈號：直接印在網頁上看看現在算出來到底是多少！
-st.warning(f"目前程式計算出的年份：{PLAN_YEAR}，週次：{current_week_num}")
+#st.warning(f"目前程式計算出的年份：{PLAN_YEAR}，週次：{current_week_num}")
 # 顯示在畫面上時，就會完美呈現您要的格式：
 # 例如：畫面標題自動顯示為 「最新讀經進度表 (第 2 年 - 第 37 週)」
 
