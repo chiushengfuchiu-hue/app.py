@@ -339,22 +339,35 @@ def get_weekly_verse(week_num):
             pass
     return fallback
 
-def get_current_week_num():
-    # 方法 A：如果您知道今天是第 2 年的第 37 週，您可以直接把「今天這個禮拜五」當作基準點來校正
-    # 例如我們直接指定：今天是 2026年9月4日（星期五），這一周強制設定為 37 週
-    known_friday = datetime.date(2026, 9, 4)
-    known_week = 37
+def get_current_year_and_week():
+    # ==========================================
+    # 【核心設定】請設定你們整個讀經計畫「最初開始」的那一天（第1年第1週的週五）
+    # ==========================================
+    # 取得當前的年份與週次
+    PLAN_YEAR, current_week_num = get_current_year_and_week()
+
+    # 顯示在畫面上時，就會完美呈現您要的格式：
+    # 例如：畫面標題自動顯示為 「最新讀經進度表 (第 2 年 - 第 37 週)」
+    plan_start_friday = datetime.date(2025, 1, 3) # <-- 請填入你們計畫第一天開跑的週五日期
     
     today = datetime.date.today()
-    # 讓星期五成為換週基準（減去 4 天讓週五到隔週四為同一週）
+    
+    # 讓「禮拜五」成為換週的交界點（減去 4 天讓週五到隔週四為同一週）
     adjusted_today = today - datetime.timedelta(days=4)
-    adjusted_known = known_friday - datetime.timedelta(days=4)
+    adjusted_start = plan_start_friday - datetime.timedelta(days=4)
     
-    # 計算跟已知週次的週數差
-    delta_weeks = (adjusted_today - adjusted_known).days // 7
-    current_week = known_week + delta_weeks
+    # 計算從計畫開始到現在總共經過了幾週 (從 0 開始算)
+    total_weeks_passed = (adjusted_today - adjusted_start).days // 7
+    total_weeks_passed = max(0, total_weeks_passed) # 確保不為負數
     
-    return max(1, min(current_week, 156))
+    # 計算是「第幾年」（假設一年為 52 週）
+    # 第 0~51 週是第 1 年，第 52~103 週是第 2 年...以此類推
+    current_year = (total_weeks_passed // 52) + 1
+    
+    # 計算在該年度中的「第幾週」（1 到 52 週）
+    current_week = (total_weeks_passed % 52) + 1
+    
+    return current_year, current_week
 
 def generate_pivot_report(target_year, max_week):
     df_att = load_attendance()
