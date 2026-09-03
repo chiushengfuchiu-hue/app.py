@@ -339,25 +339,24 @@ def get_weekly_verse(week_num):
             pass
     return fallback
 
+import datetime
+from zoneinfo import ZoneInfo  # Python 內建的時區工具
+
 def get_current_year_and_week():
-    today = datetime.date.today()
+    # 1. 強制取得台灣時間（UTC+8），解決雲端伺服器時差問題！
+    taiwan_now = datetime.datetime.now(ZoneInfo("Asia/Taipei"))
+    today = taiwan_now.date()
     
-    # 1. 先抓出今天正常日曆是第幾週
-    iso_year, iso_week, weekday = today.isocalendar()
+    # 2. 核心邏輯：把日期往後推 3 天
+    # 這樣只要今天是週五、週六、週日，就會自動跨入「下一週」的計算
+    adjusted_today = today + datetime.timedelta(days=3)
     
-    # 2. 您的計畫年份
+    iso_year, iso_week, _ = adjusted_today.isocalendar()
+    
+    # 3. 您的計畫年份與週次
     current_year = 2
+    current_week = iso_week  
     
-    # 3. 核心強制邏輯：
-    # weekday 的代號是：1=週一, 2=週二, 3=週三, 4=週四, 5=週五, 6=週六, 7=週日
-    # 只要今天是星期五 (5)、星期六 (6) 或星期日 (7)，
-    # 我們就「人為強制」把週數 +1，讓它直接跳到下一週（37週）！
-    # 而下週一 (1) 到週四 (4) 時，因為 weekday < 5，就會維持原本的週數。
-    if weekday >= 5:
-        current_week = iso_week + 1
-    else:
-        current_week = iso_week
-        
     return current_year, current_week
     
 def generate_pivot_report(target_year, max_week):
