@@ -340,10 +340,23 @@ def get_weekly_verse(week_num):
     return fallback
 
 def get_current_week_num():
-    now = datetime.datetime.now()
-    is_sunday = (now.weekday() == 6)
-    calc_date = now + datetime.timedelta(days=1) if is_sunday else now
-    return calc_date.isocalendar()[1]
+    # 1. 設定計畫第一年的起始「週五」日期（請根據你們專案第一週的星期五日期調整）
+    # 例如：假設第 1 年第 1 週的那個禮拜五是 2023年 1 月 5 日
+    plan_start_friday = datetime.date(2023, 1, 5) 
+    
+    today = datetime.date.today()
+    
+    # 2. 為了讓「禮拜五」成為新一週的開始：
+    # 我們可以把今天減去 4 天（讓星期五~星期四被歸在同一個週期組別內進行計算）
+    # 這樣每到星期五，計算出來的商數就會剛好跳進下一週！
+    adjusted_date = today - datetime.timedelta(days=4)
+    
+    # 計算從起始週五到調整日過了幾天，再除以 7
+    delta_days = (adjusted_date - plan_start_friday).days
+    current_week = (delta_days // 7) + 1
+    
+    # 確保週數在合理範圍內
+    return max(1, min(current_week, 156)) # 三年總共約 156 週
 
 def generate_pivot_report(target_year, max_week):
     df_att = load_attendance()
