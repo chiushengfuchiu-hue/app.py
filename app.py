@@ -340,29 +340,18 @@ def get_weekly_verse(week_num):
     return fallback
 
 def get_current_year_and_week():
-    # ==========================================
-    # 【週五發布日邏輯】以今天（2026/09/04 星期五）為基準，直接對齊並鎖定為第 2 年第 37 週
-    # ==========================================
-    known_date = datetime.date(2026, 9, 4)
-    known_year = 2
-    known_week = 37  # 星期五一到，立刻顯示第 37 週！
-    
     today = datetime.date.today()
     
-    # 讓「禮拜五」成為換週的交界點（減去 4 天讓週五到隔週四為同一週）
-    adjusted_today = today - datetime.timedelta(days=4)
-    adjusted_known = known_date - datetime.timedelta(days=4)
+    # 核心邏輯：為了讓「星期五」一到就立刻跳到下一週的進度
+    # 我們把今天的人為日期往後推 3 天來計算 ISO 週數
+    # 這樣只要今天是週五、週六或週日，它就會直接抓到「下一週」的編號！
+    adjusted_today = today + datetime.timedelta(days=3)
     
-    # 計算距離已知基準日經過了幾週
-    delta_weeks = (adjusted_today - adjusted_known).days // 7
+    iso_year, iso_week, _ = adjusted_today.isocalendar()
     
-    # 推算總共經過的週數
-    total_weeks_passed = (known_year - 1) * 52 + (known_week - 1) + delta_weeks
-    total_weeks_passed = max(0, total_weeks_passed)
-    
-    # 還原計算當前年份與週次
-    current_year = (total_weeks_passed // 52) + 1
-    current_week = (total_weeks_passed % 52) + 1
+    # 對應您的計畫年份與調整後的週數
+    current_year = 2
+    current_week = iso_week  # 經過調整後，今天（星期五）就會剛好算出 37 週！
     
     return current_year, current_week
     
