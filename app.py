@@ -39,7 +39,6 @@ import streamlit.components.v1 as components
 from googleapiclient.discovery import build
 
 # 1. 本週簽到區塊
-        # 1. 本週簽到區塊
         st.markdown(f"### 📍 【本週進度】{current_week_display}")
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == name)].empty
 
