@@ -1,8 +1,22 @@
 import streamlit as st
+import pandas as pd
+import datetime
+import os
+import logging
+import io
+import docx
+import gspread
+from google.oauth2.service_account import Credentials
+import streamlit.components.v1 as components
+from googleapiclient.discovery import build
+from zoneinfo import ZoneInfo
 
+# ==========================================
+# 1. 基礎設定與常數 (必須置於最前方)
+# ==========================================
 st.set_page_config(
-    page_title="四年精讀聖經",
-    page_icon="icon.jpg",
+    page_title="四年精讀聖經運動簽到系統",
+    page_icon="📖",
     layout="wide"
 )
 
@@ -15,66 +29,101 @@ footer {visibility: hidden;}
 header {visibility: hidden;}
 [data-testid="stHeader"] {visibility: hidden; display: none;}
 [data-testid="stToolbar"] {visibility: hidden; display: none;}
+html, body { max-width: 100vw; overflow-x: hidden; }
+h1 { font-size: clamp(26px, 6vw, 38px) !important; line-height: 1.3 !important; }
+
+div[data-baseweb="tab-list"] {
+    gap: 10px !important;
+    margin-bottom: 20px !important;
+}
+
+button[data-baseweb="tab"] {
+    border-radius: 12px !important;
+    padding: 12px 20px !important;
+    margin: 2px !important;
+    transition: all 0.2s ease-in-out !important;
+    box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
+}
+
+div[data-testid="stTabs"] [role="tab"] p, 
+div[data-testid="stTabs"] [role="tab"] div {
+    font-size: clamp(20px, 4.5vw, 24px) !important;
+    font-weight: 900 !important;
+    letter-spacing: 1px !important;
+    line-height: 1.3 !important;
+}
+
+/* Tab 1: 會友簽到專區 */
+button[data-baseweb="tab"]:nth-child(1) { background-color: #ECFDF5 !important; border: 2.5px solid #10B981 !important; }
+button[data-baseweb="tab"]:nth-child(1) p { color: #047857 !important; }
+button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] { background-color: #059669 !important; border-color: #047857 !important; }
+button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+/* Tab 2: 歷史讀經與導讀 */
+button[data-baseweb="tab"]:nth-child(2) { background-color: #EFF6FF !important; border: 2.5px solid #3B82F6 !important; }
+button[data-baseweb="tab"]:nth-child(2) p { color: #1D4ED8 !important; }
+button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] { background-color: #2563EB !important; border-color: #1D4ED8 !important; }
+button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+/* 頁籤 3: 長者輔助資源 */
+button[data-baseweb="tab"]:nth-child(3) { background-color: #FAF5FF !important; border: 2.5px solid #8B5CF6 !important; }
+button[data-baseweb="tab"]:nth-child(3) p { color: #6D28D9 !important; }
+button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] { background-color: #7C3AED !important; border-color: #6D28D9 !important; }
+button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+/* Tab 4: 後台統計管理 */
+button[data-baseweb="tab"]:nth-child(4) { background-color: #F8FAFC !important; border: 2.5px solid #64748B !important; }
+button[data-baseweb="tab"]:nth-child(4) p { color: #334155 !important; }
+button[data-baseweb="tab"]:nth-child(4)[aria-selected="true"] { background-color: #475569 !important; border-color: #334155 !important; }
+button[data-baseweb="tab"]:nth-child(4)[aria-selected="true"] p { color: #FFFFFF !important; }
+
+div[data-baseweb="tab-highlight"] { display: none !important; }
+
+div[data-aria-expanded] p, div[data-testid="stExpander"] summary p {
+    font-size: clamp(20px, 4.8vw, 26px) !important;
+    font-weight: 800 !important;
+    line-height: 1.5 !important;
+    color: #1E293B !important;
+}
+
+div[data-testid="stButton"] button {
+    width: 100% !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+}
+div[data-testid="stButton"] button p {
+    font-size: clamp(20px, 5.5vw, 28px) !important;
+    font-weight: 800 !important;
+}
+div[data-testid="stButton"] button[kind="secondary"] {
+    min-height: 3.2em !important;
+    padding: 10px 8px !important;
+    border-radius: 14px !important;
+    border: 2.5px solid #0284C7 !important;
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+    margin-bottom: 10px !important;
+}
+div[data-testid="stButton"] button[kind="secondary"]:hover { background-color: #E0F2FE !important; }
+div[data-testid="stButton"] button[kind="primary"] {
+    min-height: 3.5em !important;
+    border-radius: 14px !important;
+    background-color: #059669 !important;
+    margin-bottom: 10px !important;
+}
+div[data-testid="stButton"] button[kind="primary"] p { color: #FFFFFF !important; }
 </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# ==========================================
-# 建議放在這裡！讓使用者一開網頁、隱藏掉不需要的表頭後，就能第一眼看到溫馨提醒
+# 提醒區塊：雲端應用喚醒說明
 with st.expander("💡 點此查看：若開啟程式沒有簽到頁面之處理方式"):
     st.markdown("""
     1. 如果網頁中間出現 **"Yes, get this app back up!"** 的按鈕，請直接點擊它。
     2. 點擊後請稍候約 10 至 30 秒等待喚醒。
     3. 載入完成後即可正常使用！
     """)
-import pandas as pd
-import datetime
-import os
-import logging
-import io
-import docx
-import gspread
-from google.oauth2.service_account import Credentials
-import streamlit.components.v1 as components
-from googleapiclient.discovery import build
 
-# ==========================================
-# 簽到二次確認彈窗
-# ==========================================
-@st.dialog("簽到確認")
-def confirm_checkin_dialog(member_name, week_display, week_key, missing_weeks):
-    st.markdown(f"👉 確定要為 **{member_name}** 辦理 **{week_display}** 的簽到嗎？")
-    
-    if missing_weeks:
-        st.info(f"💡 系統將一併自動為您補簽本年度未簽到的 **{len(missing_weeks)}** 週進度！")
-        
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("✅ 確定簽到", type="primary", use_container_width=True):
-            records_to_add = [(week_key, member_name)]
-            for m_item in missing_weeks:
-                records_to_add.append((m_item["key"], member_name))
-            
-            add_batch_records(records_to_add)
-            
-            if missing_weeks:
-                st.toast(f"🎉 簽到成功！已一併補齊本年度 {len(missing_weeks)} 週進度！")
-            else:
-                st.toast("🎉 簽到成功！")
-                
-            st.session_state.scroll_target = "divider-top-anchor"
-            st.rerun()
-            
-    with col2:
-        if st.button("❌ 取消", type="secondary", use_container_width=True):
-            st.rerun()
-
-# 設定 Logging 紀錄
-logging.basicConfig(level=logging.INFO)
-
-# ==========================================
-# 1. 基礎設定與常數
-# ==========================================
 MEMBERS_FILE = "church_members.csv"
 VERSES_FILE = "verses.csv"
 ATTENDANCE_FILE = "attendance_records.csv"
@@ -91,13 +140,30 @@ INITIAL_MEMBERS = [
     "黃敏生", "吳秀卉", "陳安俐", "程乃珍", "蕭慧麗", 
     "蔡慧俐", "林雅谷", "李俊修", "林淑惠", "盧正亮", 
     "翁春祝", "劉淑珠", "葉雅雲", "林雅音", "趙文川",
-    "邱聖富", "田慈愛"
+    "邱聖富", "周金恩", "田慈愛", 
 ]
 
-st.set_page_config(page_title="四年精讀聖經運動簽到系統", page_icon="📖", layout="wide")
+# 設定 Logging 紀錄
+logging.basicConfig(level=logging.INFO)
 
 # ==========================================
-# 2. 輔助與 GCP 憑證函式
+# 2. 時間與日期計算輔助函數
+# ==========================================
+def get_current_year_and_week():
+    taiwan_now = datetime.datetime.now(ZoneInfo("Asia/Taipei"))
+    today = taiwan_now.date()
+    adjusted_today = today + datetime.timedelta(days=3)
+    iso_year, iso_week, _ = adjusted_today.isocalendar()
+    
+    current_year = 2
+    current_week = iso_week  
+    
+    return current_year, current_week
+
+PLAN_YEAR, current_week_num = get_current_year_and_week()
+
+# ==========================================
+# 3. 輔助與 GCP 憑證函式
 # ==========================================
 def get_gcp_credentials():
     if "gcp_service_account" not in st.secrets:
@@ -127,13 +193,16 @@ def get_drive_service():
     return build("drive", "v3", credentials=scoped_creds)
 
 @st.cache_data(ttl=60)
-def fetch_docx_content(week_num, target_date=None):
+def fetch_docx_content(week_num, target_date=None, selected_year_str="第 2 年"):
     try:
         service = get_drive_service()
         if not service:
             return None
         clean_week = "".join(filter(str.isdigit, str(week_num)))
-        query = f"'{GUIDE_FOLDER_ID}' in parents and name contains '{selected_year}' and name contains '{clean_week}' and trashed = false"
+        target_y_num = int("".join(filter(str.isdigit, str(selected_year_str))))
+        actual_year = 2026 - (PLAN_YEAR - target_y_num)
+        
+        query = f"'{GUIDE_FOLDER_ID}' in parents and name contains '{actual_year}' and name contains '{clean_week}' and trashed = false"
         results = service.files().list(q=query, fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
         files = results.get("files", [])
         
@@ -149,21 +218,17 @@ def fetch_docx_content(week_num, target_date=None):
         if not target_date:
             import re
             full_text = "\n\n".join([p.text for p in doc.paragraphs if p.text.strip() != ""])
-    
             full_text = re.sub(r'\[.*?\]', '', full_text)
             full_text = re.sub(r'［.*?］', '', full_text)
-    
             return full_text
             
         extracted_lines = []
         is_recording = False
-        
         all_paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip() != ""]
         clean_target = str(target_date).replace(" ", "")
         
         for text in all_paragraphs:
             clean_line = text.replace(" ", "")
-            
             if f"[DATE:{clean_target}]" in clean_line:
                 is_recording = True
                 continue
@@ -176,14 +241,11 @@ def fetch_docx_content(week_num, target_date=None):
         if extracted_lines:
             return "\n\n".join(extracted_lines).strip()
         else:
-            return f"⚠️ 找不到對應 `{target_date}` 的範圍。檔案內的前幾行標記範例：\n\n" + "\n---\n".join(all_paragraphs[:5])
+            return f"⚠️ 找不到對應 `{target_date}` 的範圍。"
         
     except Exception as e:
         return f"⚠️ 發生錯誤：{e}"
 
-# ==========================================
-# 3. Google Drive 動態抓取圖片網址 (帶年份)
-# ==========================================
 @st.cache_data(ttl=300)
 def get_gdrive_image_url(year_num, week_num):
     try:
@@ -192,7 +254,6 @@ def get_gdrive_image_url(year_num, week_num):
             return None
         
         drive_service = build('drive', 'v3', credentials=creds)
-
         folder_id = st.secrets.get("drive_folder_id", None)
         if not folder_id:
             return None
@@ -310,9 +371,6 @@ def delete_single_record(week_key, member_name):
     save_attendance(df_new)
     return True
 
-# ==========================================
-# 修改後的雲端名單讀取與儲存邏輯
-# ==========================================
 def load_members():
     try:
         creds = get_gcp_credentials()
@@ -321,12 +379,10 @@ def load_members():
             sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
             spreadsheet = client.open(sheet_name)
             
-            # 嘗試讀取名為 "Members" 的工作表，若沒有則自動建立
             try:
                 sheet = spreadsheet.worksheet("Members")
             except gspread.exceptions.WorksheetNotFound:
                 sheet = spreadsheet.add_worksheet(title="Members", rows=100, cols=2)
-                # 初始化預設名單
                 initial_data = [["member_name"]] + [[m] for m in INITIAL_MEMBERS]
                 sheet.append_rows(initial_data)
             
@@ -335,13 +391,11 @@ def load_members():
                 df_m = pd.DataFrame(rows)
                 if "member_name" in df_m.columns and not df_m.empty:
                     df_m["member_name"] = df_m["member_name"].astype(str).str.strip()
-                    # 同時備份到本機快取
                     df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
                     return df_m
     except Exception as e:
         logging.error(f"從 Google Sheets 讀取會友名單失敗，改用本機快取: {e}")
 
-    # 備援：若連線失敗才讀取本機
     if os.path.exists(MEMBERS_FILE):
         try:
             df_m = pd.read_csv(MEMBERS_FILE, encoding="utf-8-sig")
@@ -356,11 +410,9 @@ def load_members():
     return df_m
 
 def save_members(members_list):
-    # 1. 先存本機備份
     df_m = pd.DataFrame({"member_name": members_list})
     df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
     
-    # 2. 同步寫入 Google Sheets 的 "Members" 分頁
     try:
         creds = get_gcp_credentials()
         if creds:
@@ -373,9 +425,8 @@ def save_members(members_list):
             except gspread.exceptions.WorksheetNotFound:
                 sheet = spreadsheet.add_worksheet(title="Members", rows=100, cols=2)
             
-            # 清空舊資料並重新填入完整名單
             sheet.clear()
-            sheet.append_row(["member_name"]) # 標題列
+            sheet.append_row(["member_name"])
             rows_to_insert = [[m] for m in members_list]
             if rows_to_insert:
                 sheet.append_rows(rows_to_insert)
@@ -402,20 +453,6 @@ def get_weekly_verse(week_num):
             pass
     return fallback
 
-import datetime
-from zoneinfo import ZoneInfo
-
-def get_current_year_and_week():
-    taiwan_now = datetime.datetime.now(ZoneInfo("Asia/Taipei"))
-    today = taiwan_now.date()
-    adjusted_today = today + datetime.timedelta(days=3)
-    iso_year, iso_week, _ = adjusted_today.isocalendar()
-    
-    current_year = 2
-    current_week = iso_week  
-    
-    return current_year, current_week
-    
 def generate_pivot_report(target_year, max_week):
     df_att = load_attendance()
     members = load_members()["member_name"].tolist()
@@ -443,106 +480,42 @@ def generate_pivot_report(target_year, max_week):
     cols_order = ["member_name", "完成週數", "完成率"] + week_cols
     return df_report[cols_order]
 
-PLAN_YEAR, current_week_num = get_current_year_and_week()
-
 # ==========================================
-# 5. CSS 樣式
+# 5. 簽到二次確認彈窗
 # ==========================================
-st.markdown("""
-    <style>
-    html, body { max-width: 100vw; overflow-x: hidden; }
-    h1 { font-size: clamp(26px, 6vw, 38px) !important; line-height: 1.3 !important; }
-
-    div[data-baseweb="tab-list"] {
-        gap: 10px !important;
-        margin-bottom: 20px !important;
-    }
-
-    button[data-baseweb="tab"] {
-        border-radius: 12px !important;
-        padding: 12px 20px !important;
-        margin: 2px !important;
-        transition: all 0.2s ease-in-out !important;
-        box-shadow: 0px 2px 5px rgba(0,0,0,0.08) !important;
-    }
-
-    div[data-testid="stTabs"] [role="tab"] p, 
-    div[data-testid="stTabs"] [role="tab"] div {
-        font-size: clamp(20px, 4.5vw, 24px) !important;
-        font-weight: 900 !important;
-        letter-spacing: 1px !important;
-        line-height: 1.3 !important;
-    }
-
-    /* Tab 1: 會友簽到專區 */
-    button[data-baseweb="tab"]:nth-child(1) { background-color: #ECFDF5 !important; border: 2.5px solid #10B981 !important; }
-    button[data-baseweb="tab"]:nth-child(1) p { color: #047857 !important; }
-    button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] { background-color: #059669 !important; border-color: #047857 !important; }
-    button[data-baseweb="tab"]:nth-child(1)[aria-selected="true"] p { color: #FFFFFF !important; }
-
-    /* Tab 2: 歷史讀經與導讀 */
-    button[data-baseweb="tab"]:nth-child(2) { background-color: #EFF6FF !important; border: 2.5px solid #3B82F6 !important; }
-    button[data-baseweb="tab"]:nth-child(2) p { color: #1D4ED8 !important; }
-    button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] { background-color: #2563EB !important; border-color: #1D4ED8 !important; }
-    button[data-baseweb="tab"]:nth-child(2)[aria-selected="true"] p { color: #FFFFFF !important; }
-
-    /* 頁籤 3: 長者輔助資源 */
-    button[data-baseweb="tab"]:nth-child(3) { background-color: #FAF5FF !important; border: 2.5px solid #8B5CF6 !important; }
-    button[data-baseweb="tab"]:nth-child(3) p { color: #6D28D9 !important; }
-    button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] { background-color: #7C3AED !important; border-color: #6D28D9 !important; }
-    button[data-baseweb="tab"]:nth-child(3)[aria-selected="true"] p { color: #FFFFFF !important; }
+@st.dialog("簽到確認")
+def confirm_checkin_dialog(member_name, week_display, week_key, missing_weeks):
+    st.markdown(f"👉 確定要為 **{member_name}** 辦理 **{week_display}** 的簽到嗎？")
     
-    /* Tab 4: 後台統計管理 */
-    button[data-baseweb="tab"]:nth-child(4) { background-color: #F8FAFC !important; border: 2.5px solid #64748B !important; }
-    button[data-baseweb="tab"]:nth-child(4) p { color: #334155 !important; }
-    button[data-baseweb="tab"]:nth-child(4)[aria-selected="true"] { background-color: #475569 !important; border-color: #334155 !important; }
-    button[data-baseweb="tab"]:nth-child(4)[aria-selected="true"] p { color: #FFFFFF !important; }
-
-    div[data-baseweb="tab-highlight"] { display: none !important; }
-
-    div[data-aria-expanded] p, div[data-testid="stExpander"] summary p {
-        font-size: clamp(20px, 4.8vw, 26px) !important;
-        font-weight: 800 !important;
-        line-height: 1.5 !important;
-        color: #1E293B !important;
-    }
-
-    div[data-testid="stButton"] button {
-        width: 100% !important;
-        white-space: normal !important;
-        word-break: break-word !important;
-    }
-    div[data-testid="stButton"] button p {
-        font-size: clamp(20px, 5.5vw, 28px) !important;
-        font-weight: 800 !important;
-    }
-    div[data-testid="stButton"] button[kind="secondary"] {
-        min-height: 3.2em !important;
-        padding: 10px 8px !important;
-        border-radius: 14px !important;
-        border: 2.5px solid #0284C7 !important;
-        background-color: #FFFFFF !important;
-        color: #0F172A !important;
-        margin-bottom: 10px !important;
-    }
-    div[data-testid="stButton"] button[kind="secondary"]:hover { background-color: #E0F2FE !important; }
-    div[data-testid="stButton"] button[kind="primary"] {
-        min-height: 3.5em !important;
-        border-radius: 14px !important;
-        background-color: #059669 !important;
-        margin-bottom: 10px !important;
-    }
-    div[data-testid="stButton"] button[kind="primary"] p { color: #FFFFFF !important; }
-    </style>
-""", unsafe_allow_html=True)
+    if missing_weeks:
+        st.info(f"💡 系統將一併自動為您補簽本年度未簽到的 **{len(missing_weeks)}** 週進度！")
+        
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ 確定簽到", type="primary", use_container_width=True):
+            records_to_add = [(week_key, member_name)]
+            for m_item in missing_weeks:
+                records_to_add.append((m_item["key"], member_name))
+            
+            add_batch_records(records_to_add)
+            
+            if missing_weeks:
+                st.toast(f"🎉 簽到成功！已一併補齊本年度 {len(missing_weeks)} 週進度！")
+            else:
+                st.toast("🎉 簽到成功！")
+                
+            st.session_state.scroll_target = "divider-top-anchor"
+            st.rerun()
+            
+    with col2:
+        if st.button("❌ 取消", type="secondary", use_container_width=True):
+            st.rerun()
 
 # ==========================================
-# 6. 主介面
+# 6. 主介面邏輯
 # ==========================================
 if "current_member" not in st.session_state:
     st.session_state.current_member = None
-
-PLAN_YEAR, current_week_num = get_current_year_and_week()
 
 current_week_key = f"Y{PLAN_YEAR}-W{current_week_num:02d}"
 current_week_display = f"第 {PLAN_YEAR} 年 - 第 {current_week_num:02d} 週"
@@ -667,7 +640,6 @@ with tab_user:
         
         signed_weeks = df_attendance[df_attendance["member_name"] == member_name]["week_key"].tolist()
         
-        # 1. 本年度（當前年份）未完成的週次清單
         current_year_missing = []
         for w in range(1, current_week_num):
             w_key = f"Y{PLAN_YEAR}-W{w:02d}"
@@ -684,22 +656,7 @@ with tab_user:
         else:
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
                 confirm_checkin_dialog(member_name, current_week_display, current_week_key, current_year_missing)
-                
-                records_to_add = [(current_week_key, member_name)]
-                for m_item in current_year_missing:
-                    records_to_add.append((m_item["key"], member_name))
-                
-                add_batch_records(records_to_add)
 
-                if current_year_missing:
-                    st.toast(f"🎉 簽到成功！並已自動為您補齊本年度 {len(current_year_missing)} 週進度！")
-                else:
-                    st.toast("🎉 簽到成功！")
-                
-                st.session_state.scroll_target = "divider-top-anchor"
-                st.rerun()
-
-        # 2. 當年度過往未簽到進度（若有）
         if current_year_missing:
             st.divider()
             st.markdown(f"### 🟡 【本年度（第 {PLAN_YEAR} 年）過往未完成進度】")
@@ -722,7 +679,6 @@ with tab_user:
                         st.session_state.scroll_target = "divider-top-anchor"
                         st.rerun()
 
-        # 3. 跨年度 / 過往年份補簽（使用下拉選單，避免頁面過長！）
         past_years = [y for y in range(1, PLAN_YEAR)]
         if past_years:
             st.divider()
@@ -732,7 +688,6 @@ with tab_user:
             selected_past_year = st.selectbox("選擇要檢查的過往年份：", [f"第 {y} 年" for y in past_years], key=f"past_year_sel_{member_name}")
             target_past_y_num = int(selected_past_year.split("第 ")[1].split(" 年")[0])
 
-            # 計算該過往年份未簽到的週次
             past_year_missing = []
             for w in range(1, 53):
                 w_key = f"Y{target_past_y_num}-W{w:02d}"
@@ -812,13 +767,12 @@ with tab_history:
         selected_day = None
 
     with st.spinner("正在從雲端硬碟導讀資料夾抓取檔案中..."):
-        doc_content = fetch_docx_content(target_w_num, target_date=selected_day)
+        doc_content = fetch_docx_content(target_w_num, target_date=selected_day, selected_year_str=selected_year)
 
     if not doc_content:
         st.info(f"💡 雲端硬碟導讀資料夾中尚未找到第 {target_w_num} 週的 Word 導讀檔案。")
     else:
         display_text = doc_content
-        
         if view_mode == "📜 全文導讀":
             import re
             display_text = re.sub(r'\[.*?\]', '', display_text)
@@ -852,15 +806,13 @@ with tab_resource:
     st.info("💡 這裡提供給長輩與弟兄姊妹作為輔助參考的聲音導讀、經卷介紹與操作提醒，點擊下方按鈕即可參考：")
 
     st.markdown("---")
-
     st.markdown("#### 📚 認識聖經經卷與背景")
-    st.markdown("幫助長輩在讀經前快速了解各卷書的作者、寫作背景與核心主題：")
     
     col_book1, col_book2 = st.columns(2)
     with col_book1:
         st.markdown(
             """
-            <div style="background-color: #F8FAFC; padding: 15px; border-radius: 10px; border: 2px solid #3B82F6;">
+            <div style="background-color: #F8FAFC; padding: 15px; border-radius: 10px; border: 2.5px solid #3B82F6;">
                 <b>📖 華人基督徒查經資料網</b><br>
                 <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">提供純正和周詳的查經資料。</p>
                 <a href="https://www.ccbiblestudy.org/index-T.htm" target="_blank" style="font-weight: bold; color: #2563EB;">👉 各經卷拾惠、例證、註解</a>
@@ -871,7 +823,7 @@ with tab_resource:
     with col_book2:
         st.markdown(
             """
-            <div style="background-color: #F8FAFC; padding: 15px; border-radius: 10px; border: 2px solid #10B981;">
+            <div style="background-color: #F8FAFC; padding: 15px; border-radius: 10px; border: 2.5px solid #10B981;">
                 <b>📘 認識聖經各經卷SoundOn</b><br>
                 <p style="font-size: 14px; color: #4B5563; margin-top: 5px;">認識每卷書背景與主題，明白上帝的本質與作為。</p>
                 <a href="https://player.soundon.fm/p/49f6e2a8-a4c8-463c-9c97-7d4e4a8a4188" target="_blank" style="font-weight: bold; color: #059669;">👉 認識聖經經卷系列，點擊聆聽</a>
@@ -881,9 +833,7 @@ with tab_resource:
         )
 
     st.markdown("---")
-
     st.markdown("#### 🎙️ 推薦有聲導讀 / Podcast 資源")
-    st.markdown("若長輩看字較吃力，或是希望在休閒、散步時聆聽經文導讀，可參考以下頻道：")
     
     col_r1, col_r2 = st.columns(2)
     with col_r1:
@@ -910,7 +860,6 @@ with tab_resource:
         )
 
     st.markdown("---")
-
     st.markdown("#### 📱 長輩操作小撇步")
     st.markdown(
         """
