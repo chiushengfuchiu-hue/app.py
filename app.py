@@ -39,30 +39,24 @@ import streamlit.components.v1 as components
 from googleapiclient.discovery import build
 
 # ==========================================
-# 簽到二次確認彈窗
+# 簽到二次確認彈窗（修正版：只針對當週確認，絕不自動全補簽）
 # ==========================================
 @st.dialog("簽到確認")
-def confirm_checkin_dialog(member_name, week_display, week_key, missing_weeks):
+def confirm_checkin_dialog(member_name, week_display, week_key):
     st.markdown(f"👉 確定要為 **{member_name}** 辦理 **{week_display}** 的簽到嗎？")
+    st.caption("💡 貼心提醒：此動作僅會完成本週的簽到。若有過往未完成的進度，可於下方「過往進度補簽專區」自行選取補簽唷！")
     
-    if missing_weeks:
-        st.info(f"💡 系統將一併自動為您補簽過往未簽到的 **{len(missing_weeks)}** 週進度！")
-        
     col1, col2 = st.columns(2)
     with col1:
         if st.button("✅ 確定簽到", type="primary", use_container_width=True):
-            records_to_add = [(week_key, member_name)]
-            for m_item in missing_weeks:
-                records_to_add.append((m_item["key"], member_name))
-            
-            add_batch_records(records_to_add)
-            
-            if missing_weeks:
-                st.toast(f"🎉 簽到成功！已一併補齊過往 {len(missing_weeks)} 週進度！")
-            else:
-                st.toast("🎉 簽到成功！")
-                
+            # 嚴格只寫入當前點擊的那一週
+            add_batch_records([(week_key, member_name)])
+            st.toast(f"🎉 成功完成 {week_display} 簽到！")
             st.session_state.scroll_target = "divider-top-anchor"
+            st.rerun()
+            
+    with col2:
+        if st.button("❌ 取消", type="secondary", use_container_width=True):
             st.rerun()
             
     with col2:
