@@ -38,43 +38,53 @@ from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
 from googleapiclient.discovery import build
 
-# ==========================================
-# 簽到二次確認彈窗（修正版：內建安全寫入邏輯，解決 TypeError）
-# ==========================================
-@st.dialog("簽到確認")
-def confirm_checkin_dialog(member_name, week_display, week_key):
-    st.markdown(f"👉 確定要為 **{member_name}** 辦理 **{week_display}** 的簽到嗎？")
-    st.caption("💡 貼心提醒：此動作僅會完成本週的簽到。若有過往未完成的進度，可於下方「過往進度補簽專區」自行選取補簽唷！")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("✅ 確定簽到", type="primary", use_container_width=True):
-            try:
-                # 直接安全寫入 Google Sheets 簽到分頁
-                creds = get_gcp_credentials()
-                if creds:
-                    client = gspread.authorize(creds)
-                    sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
-                    spreadsheet = client.open(sheet_name)
-                    
-                    # 預設簽到分頁名稱為 Attendance 或對應名稱，依您的專案而定
-                    try:
-                        sheet = spreadsheet.worksheet("Attendance")
-                    except gspread.exceptions.WorksheetNotFound:
-                        sheet = spreadsheet.get_worksheet(0) # 若找不到就用第一個分頁
-                    
-                    # 寫入資料：[week_key, member_name]
-                    sheet.append_row([week_key, member_name])
-                    
-                st.toast(f"🎉 成功完成 {week_display} 簽到！")
-                st.session_state.scroll_target = "divider-top-anchor"
-                st.rerun()
-            except Exception as e:
-                st.error(f"簽到寫入失敗，請稍後再試：{e}")
-            
-    with col2:
-        if st.button("❌ 取消", type="secondary", use_container_width=True):
-            st.rerun()
+# 1. 本週簽到區塊
+        st.markdown(f"### 📍 【本週進度】{current_week_display}")
+        is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
+
+        if is_signed:
+            st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
+        else:
+            # 用 session_state 控制是否展開確認按鈕，不用 Dialog 裝飾器
+            if f"show_confirm_{member_name}" not in st.session_state:
+                st.session_state[f"show_confirm_{member_name}"] = False
+
+            if not st.session_state[f"show_confirm_{member_name}"]:
+                if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True, key=f"btn_ready_sign_{member_name}"):
+                    st.session_state[f"show_confirm_{member_name}"] = True
+                    st.rerun()
+            else:
+                # 點擊後展開的確認區塊
+                st.warning(f"👉 確定要為 **{member_name}** 辦理 **{current_week_display}** 的簽到嗎？")
+                st.caption("💡 貼心提醒：此動作僅會完成本週的簽到。若有過往未完成的進度，可於下方「過往進度補簽專區」自行選取補簽唷！")
+                
+                c_yes, c_no = st.columns(2)
+                with c_yes:
+                    if st.button("✅ 確定簽到", type="primary", use_container_width=True, key=f"yes_sign_{member_name}"):
+                        try:
+                            creds = get_gcp_credentials()
+                            if creds:
+                                client = gspread.authorize(creds)
+                                sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+                                spreadsheet = client.open(sheet_name)
+                                try:
+                                    sheet = spreadsheet.worksheet("Attendance")
+                                except gspread.exceptions.WorksheetNotFound:
+                                    sheet = spreadsheet.get_worksheet(0)
+                                
+                                sheet.append_row([current_week_key, member_name])
+                                
+                            st.toast(f"🎉 成功完成 {current_week_display} 簽到！")
+                            st.session_state[f"show_confirm_{member_name}"] = False
+                            st.session_state.scroll_target = "divider-top-anchor"
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"簽到寫入失敗：{e}")
+                            
+                with c_no:
+                    if st.button("❌ 取消", type="secondary", use_container_width=True, key=f"no_sign_{member_name}"):
+                        st.session_state[f"show_confirm_{member_name}"] = False
+                        st.rerun()
 
 # 設定 Logging 紀錄
 logging.basicConfig(level=logging.INFO)
