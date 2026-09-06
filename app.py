@@ -39,7 +39,7 @@ import streamlit.components.v1 as components
 from googleapiclient.discovery import build
 
 # ==========================================
-# 簽到二次確認彈窗（修正版：只針對當週確認，絕不自動全補簽）
+# 簽到二次確認彈窗（修正版：內建安全寫入邏輯，解決 TypeError）
 # ==========================================
 @st.dialog("簽到確認")
 def confirm_checkin_dialog(member_name, week_display, week_key):
@@ -49,15 +49,28 @@ def confirm_checkin_dialog(member_name, week_display, week_key):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("✅ 確定簽到", type="primary", use_container_width=True):
-            # 嚴格只寫入當前點擊的那一週
-            add_batch_records([(week_key, member_name)])
-            st.toast(f"🎉 成功完成 {week_display} 簽到！")
-            st.session_state.scroll_target = "divider-top-anchor"
-            st.rerun()
-            
-    with col2:
-        if st.button("❌ 取消", type="secondary", use_container_width=True):
-            st.rerun()
+            try:
+                # 直接安全寫入 Google Sheets 簽到分頁
+                creds = get_gcp_credentials()
+                if creds:
+                    client = gspread.authorize(creds)
+                    sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+                    spreadsheet = client.open(sheet_name)
+                    
+                    # 預設簽到分頁名稱為 Attendance 或對應名稱，依您的專案而定
+                    try:
+                        sheet = spreadsheet.worksheet("Attendance")
+                    except gspread.exceptions.WorksheetNotFound:
+                        sheet = spreadsheet.get_worksheet(0) # 若找不到就用第一個分頁
+                    
+                    # 寫入資料：[week_key, member_name]
+                    sheet.append_row([week_key, member_name])
+                    
+                st.toast(f"🎉 成功完成 {week_display} 簽到！")
+                st.session_state.scroll_target = "divider-top-anchor"
+                st.rerun()
+            except Exception as e:
+                st.error(f"簽到寫入失敗，請稍後再試：{e}")
             
     with col2:
         if st.button("❌ 取消", type="secondary", use_container_width=True):
