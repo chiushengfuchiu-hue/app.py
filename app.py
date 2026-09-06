@@ -310,7 +310,38 @@ def delete_single_record(week_key, member_name):
     save_attendance(df_new)
     return True
 
+# ==========================================
+# 修改後的雲端名單讀取與儲存邏輯
+# ==========================================
 def load_members():
+    try:
+        creds = get_gcp_credentials()
+        if creds:
+            client = gspread.authorize(creds)
+            sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+            spreadsheet = client.open(sheet_name)
+            
+            # 嘗試讀取名為 "Members" 的工作表，若沒有則自動建立
+            try:
+                sheet = spreadsheet.worksheet("Members")
+            except gspread.exceptions.WorksheetNotFound:
+                sheet = spreadsheet.add_worksheet(title="Members", rows=100, cols=2)
+                # 初始化預設名單
+                initial_data = [["member_name"]] + [[m] for m in INITIAL_MEMBERS]
+                sheet.append_rows(initial_data)
+            
+            rows = sheet.get_all_records()
+            if rows:
+                df_m = pd.DataFrame(rows)
+                if "member_name" in df_m.columns and not df_m.empty:
+                    df_m["member_name"] = df_m["member_name"].astype(str).str.strip()
+                    # 同時備份到本機快取
+                    df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
+                    return df_m
+    except Exception as e:
+        logging.error(f"從 Google Sheets 讀取會友名單失敗，改用本機快取: {e}")
+
+    # 備援：若連線失敗才讀取本機
     if os.path.exists(MEMBERS_FILE):
         try:
             df_m = pd.read_csv(MEMBERS_FILE, encoding="utf-8-sig")
@@ -318,14 +349,38 @@ def load_members():
                 df_m["member_name"] = df_m["member_name"].astype(str).str.strip()
                 return df_m
         except Exception as e:
-            logging.error(f"讀取會友名單失敗: {e}")
+            logging.error(f"讀取本機會友名單失敗: {e}")
 
     df_m = pd.DataFrame({"member_name": INITIAL_MEMBERS})
     df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
     return df_m
 
 def save_members(members_list):
-    pd.DataFrame({"member_name": members_list}).to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
+    # 1. 先存本機備份
+    df_m = pd.DataFrame({"member_name": members_list})
+    df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
+    
+    # 2. 同步寫入 Google Sheets 的 "Members" 分頁
+    try:
+        creds = get_gcp_credentials()
+        if creds:
+            client = gspread.authorize(creds)
+            sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+            spreadsheet = client.open(sheet_name)
+            
+            try:
+                sheet = spreadsheet.worksheet("Members")
+            except gspread.exceptions.WorksheetNotFound:
+                sheet = spreadsheet.add_worksheet(title="Members", rows=100, cols=2)
+            
+            # 清空舊資料並重新填入完整名單
+            sheet.clear()
+            sheet.append_row(["member_name"]) # 標題列
+            rows_to_insert = [[m] for m in members_list]
+            if rows_to_insert:
+                sheet.append_rows(rows_to_insert)
+    except Exception as e:
+        logging.error(f"Google Sheets 會友名單同步失敗: {e}")
 
 def get_weekly_verse(week_num):
     fallback = {
