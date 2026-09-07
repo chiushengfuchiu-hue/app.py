@@ -310,38 +310,7 @@ def delete_single_record(week_key, member_name):
     save_attendance(df_new)
     return True
 
-# ==========================================
-# 修改後的雲端名單讀取與儲存邏輯
-# ==========================================
 def load_members():
-    try:
-        creds = get_gcp_credentials()
-        if creds:
-            client = gspread.authorize(creds)
-            sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
-            spreadsheet = client.open(sheet_name)
-            
-            # 嘗試讀取名為 "Members" 的工作表，若沒有則自動建立
-            try:
-                sheet = spreadsheet.worksheet("Members")
-            except gspread.exceptions.WorksheetNotFound:
-                sheet = spreadsheet.add_worksheet(title="Members", rows=100, cols=2)
-                # 初始化預設名單
-                initial_data = [["member_name"]] + [[m] for m in INITIAL_MEMBERS]
-                sheet.append_rows(initial_data)
-            
-            rows = sheet.get_all_records()
-            if rows:
-                df_m = pd.DataFrame(rows)
-                if "member_name" in df_m.columns and not df_m.empty:
-                    df_m["member_name"] = df_m["member_name"].astype(str).str.strip()
-                    # 同時備份到本機快取
-                    df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
-                    return df_m
-    except Exception as e:
-        logging.error(f"從 Google Sheets 讀取會友名單失敗，改用本機快取: {e}")
-
-    # 備援：若連線失敗才讀取本機
     if os.path.exists(MEMBERS_FILE):
         try:
             df_m = pd.read_csv(MEMBERS_FILE, encoding="utf-8-sig")
@@ -349,38 +318,13 @@ def load_members():
                 df_m["member_name"] = df_m["member_name"].astype(str).str.strip()
                 return df_m
         except Exception as e:
-            logging.error(f"讀取本機會友名單失敗: {e}")
+            logging.error(f"讀取會友名單失敗: {e}")
 
     df_m = pd.DataFrame({"member_name": INITIAL_MEMBERS})
     df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
     return df_m
 
 def save_members(members_list):
-    # 1. 先存本機備份
-    df_m = pd.DataFrame({"member_name": members_list})
-    df_m.to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
-    
-    # 2. 同步寫入 Google Sheets 的 "Members" 分頁
-    try:
-        creds = get_gcp_credentials()
-        if creds:
-            client = gspread.authorize(creds)
-            sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
-            spreadsheet = client.open(sheet_name)
-            
-            try:
-                sheet = spreadsheet.worksheet("Members")
-            except gspread.exceptions.WorksheetNotFound:
-                sheet = spreadsheet.add_worksheet(title="Members", rows=100, cols=2)
-            
-            # 清空舊資料並重新填入完整名單
-            sheet.clear()
-            sheet.append_row(["member_name"]) # 標題列
-            rows_to_insert = [[m] for m in members_list]
-            if rows_to_insert:
-                sheet.append_rows(rows_to_insert)
-    except Exception as e:
-        logging.error(f"Google Sheets 會友名單同步失敗: {e}")
     pd.DataFrame({"member_name": members_list}).to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
 
 def get_weekly_verse(week_num):
@@ -452,11 +396,6 @@ def generate_pivot_report(target_year, max_week):
 
 # 取得當前的年份與週次
 PLAN_YEAR, current_week_num = get_current_year_and_week()
-
-# 🔍 測試燈號：直接印在網頁上看看現在算出來到底是多少！
-#st.warning(f"目前程式計算出的年份：{PLAN_YEAR}，週次：{current_week_num}")
-# 顯示在畫面上時，就會完美呈現您要的格式：
-# 例如：畫面標題自動顯示為 「最新讀經進度表 (第 2 年 - 第 37 週)」
 
 # ==========================================
 # 5. CSS 樣式
@@ -555,7 +494,6 @@ st.markdown("""
 if "current_member" not in st.session_state:
     st.session_state.current_member = None
 
-# 確保呼叫時都是這樣寫：
 PLAN_YEAR, current_week_num = get_current_year_and_week()
 
 current_week_key = f"Y{PLAN_YEAR}-W{current_week_num:02d}"
@@ -567,7 +505,6 @@ df_attendance = load_attendance()
 
 st.title(f"📖 最新讀經進度表（{current_week_display}）")
 
-# 嚴格確保第 1、2 頁籤不變，第 3 頁為雲端資料，第 4 頁為後台
 tab_user, tab_history, tab_resource, tab_admin = st.tabs([
     "✍️ 會友簽到專區", 
     "🗓️ 讀經暨導讀查詢系統", 
@@ -576,7 +513,7 @@ tab_user, tab_history, tab_resource, tab_admin = st.tabs([
 ])
 
 # ------------------------------------------
-# TAB 1: 會友簽到專區 (維持原樣)
+# TAB 1: 會友簽到專區
 # ------------------------------------------
 with tab_user:
     current_img_url = get_gdrive_image_url(PLAN_YEAR, current_week_num)
@@ -750,7 +687,7 @@ with tab_user:
         st.markdown(f"💬 **心靈補給**：{verse_info['encouragement']}")
 
 # ------------------------------------------
-# TAB 2: 歷史讀經與導讀查詢 (維持原樣)
+# TAB 2: 歷史讀經與導讀查詢
 # ------------------------------------------
 with tab_history:
     st.markdown("### 🗓️ 歷史讀經進度表與導讀查詢")
@@ -825,7 +762,7 @@ with tab_history:
         )
 
 # ------------------------------------------
-# TAB 3: 長者輔助資源 (包含認識經卷與有聲導讀)
+# TAB 3: 長者輔助資源
 # ------------------------------------------
 with tab_resource:
     st.markdown("### 🎧 長者讀經輔助資源（參考專區）")
@@ -833,7 +770,6 @@ with tab_resource:
 
     st.markdown("---")
 
-    # 區塊 1：認識經卷圖框與解說
     st.markdown("#### 📚 認識聖經經卷與背景")
     st.markdown("幫助長輩在讀經前快速了解各卷書的作者、寫作背景與核心主題：")
     
@@ -863,7 +799,6 @@ with tab_resource:
 
     st.markdown("---")
 
-    # 區塊 2：聲音導讀資源
     st.markdown("#### 🎙️ 推薦有聲導讀 / Podcast 資源")
     st.markdown("若長輩看字較吃力，或是希望在休閒、散步時聆聽經文導讀，可參考以下頻道：")
     
@@ -893,7 +828,6 @@ with tab_resource:
 
     st.markdown("---")
 
-    # 區塊 3：實用好幫手與操作提醒
     st.markdown("#### 📱 長輩操作小撇步")
     st.markdown(
         """
@@ -903,7 +837,7 @@ with tab_resource:
     )
 
 # ------------------------------------------
-# TAB 4: 後台統計與管理 (第四個頁籤)
+# TAB 4: 後台統計與管理
 # ------------------------------------------
 with tab_admin:
     st.subheader("🔒 管理者控制台")
