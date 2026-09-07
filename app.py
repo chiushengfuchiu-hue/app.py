@@ -66,7 +66,7 @@ def confirm_checkin_dialog(member_name, week_display, week_key, missing_weeks):
             st.rerun()
             
     with col2:
-        if st.button("❌ 取消", type="secondary", use_container_width=True):
+        if st.button("❌ 取消", use_container_width=True):
             st.rerun()
 
 # 設定 Logging 紀錄
@@ -697,22 +697,8 @@ with tab_user:
             st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
         else:
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
-                # 僅呼叫對話框，由對話框內部的按鈕決定是否執行寫入
+                # 只要負責呼叫對話框，把資料傳進去就好！
                 confirm_checkin_dialog(member_name, current_week_display, current_week_key, missing_weeks_info)
-                
-                records_to_add = [(current_week_key, member_name)]
-                for m_item in missing_weeks_info:
-                    records_to_add.append((m_item["key"], member_name))
-                
-                add_batch_records(records_to_add)
-
-                if missing_weeks_info:
-                    st.toast(f"🎉 簽到成功！並已自動為您補齊過往 {len(missing_weeks_info)} 週進度！")
-                else:
-                    st.toast("🎉 簽到成功！")
-                
-                st.session_state.scroll_target = "divider-top-anchor"
-                st.rerun()
 
         st.divider()
         st.markdown("### 🟡 【過往進度補簽狀態】")
