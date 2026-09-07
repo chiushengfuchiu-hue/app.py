@@ -697,6 +697,7 @@ with tab_user:
             st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
         else:
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
+                # 僅呼叫對話框，由對話框內部的按鈕決定是否執行寫入
                 confirm_checkin_dialog(member_name, current_week_display, current_week_key, missing_weeks_info)
                 
                 records_to_add = [(current_week_key, member_name)]
