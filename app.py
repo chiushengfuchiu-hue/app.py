@@ -306,8 +306,36 @@ def delete_single_record(week_key, member_name):
     df = load_attendance()
     week_key = str(week_key).strip()
     member_name = str(member_name).strip()
+    
+    # 1. 更新本機 DataFrame 並存檔
     df_new = df[~((df["week_key"] == week_key) & (df["member_name"] == member_name))]
     save_attendance(df_new)
+    
+    # 2. 同步從 Google Sheets 刪除該筆紀錄
+    try:
+        creds = get_gcp_credentials()
+        if creds:
+            client = gspread.authorize(creds)
+            sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
+            sheet = client.open(sheet_name).sheet1
+            
+            # 取得試算表所有資料
+            all_rows = sheet.get_all_values()
+            if all_rows:
+                # 假設欄位順序為 week_key, member_name, timestamp (通常第一列是標題)
+                header = all_rows[0]
+                rows_to_keep = [header]
+                for row in all_rows[1:]:
+                    # 比對 week_key 與 member_name，如果不符合要刪除的目標就保留
+                    if not (len(row) >= 2 and row[0].strip() == week_key and row[1].strip() == member_name):
+                        rows_to_keep.append(row)
+                
+                # 清空並重新填入過濾後的資料
+                sheet.clear()
+                sheet.append_rows(rows_to_keep)
+    except Exception as e:
+        logging.error(f"Google Sheets 刪除紀錄同步失敗: {e}")
+        
     return True
 
 # ==========================================
