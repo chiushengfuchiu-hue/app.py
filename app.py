@@ -319,21 +319,29 @@ def delete_single_record(week_key, member_name):
             sheet_name = st.secrets.get("spreadsheet_name", "Church_Attendance")
             sheet = client.open(sheet_name).sheet1
             
-            # 取得試算表所有資料
             all_rows = sheet.get_all_values()
-            if all_rows:
-                # 假設欄位順序為 week_key, member_name, timestamp (通常第一列是標題)
+            if len(all_rows) > 1:
                 header = all_rows[0]
                 rows_to_keep = [header]
+                
+                # 對應截圖：row[0] 是 week_key，row[1] 是 member_name
                 for row in all_rows[1:]:
-                    # 比對 week_key 與 member_name，如果不符合要刪除的目標就保留
                     if not (len(row) >= 2 and row[0].strip() == week_key and row[1].strip() == member_name):
                         rows_to_keep.append(row)
                 
-                # 清空並重新填入過濾後的資料
+                # 重新寫入 Google Sheets
                 sheet.clear()
                 sheet.append_rows(rows_to_keep)
+                
+                # 3. 關鍵：刪除成功後，清除 Streamlit 快取，確保畫面與 Sheets 同步更新！
+                if hasattr(load_attendance, "clear"):
+                    load_attendance.clear()
+                # 或者直接用全域清除快取
+                st.cache_data.clear()
+                
     except Exception as e:
+        # 如果出錯，直接印在畫面上讓您排查問題
+        st.error(f"Google Sheets 刪除同步失敗: {e}")
         logging.error(f"Google Sheets 刪除紀錄同步失敗: {e}")
         
     return True
