@@ -381,6 +381,7 @@ def save_members(members_list):
                 sheet.append_rows(rows_to_insert)
     except Exception as e:
         logging.error(f"Google Sheets 會友名單同步失敗: {e}")
+    pd.DataFrame({"member_name": members_list}).to_csv(MEMBERS_FILE, index=False, encoding="utf-8-sig")
 
 def get_weekly_verse(week_num):
     fallback = {
@@ -451,6 +452,11 @@ def generate_pivot_report(target_year, max_week):
 
 # 取得當前的年份與週次
 PLAN_YEAR, current_week_num = get_current_year_and_week()
+
+# 🔍 測試燈號：直接印在網頁上看看現在算出來到底是多少！
+#st.warning(f"目前程式計算出的年份：{PLAN_YEAR}，週次：{current_week_num}")
+# 顯示在畫面上時，就會完美呈現您要的格式：
+# 例如：畫面標題自動顯示為 「最新讀經進度表 (第 2 年 - 第 37 週)」
 
 # ==========================================
 # 5. CSS 樣式
@@ -549,6 +555,7 @@ st.markdown("""
 if "current_member" not in st.session_state:
     st.session_state.current_member = None
 
+# 確保呼叫時都是這樣寫：
 PLAN_YEAR, current_week_num = get_current_year_and_week()
 
 current_week_key = f"Y{PLAN_YEAR}-W{current_week_num:02d}"
@@ -560,6 +567,7 @@ df_attendance = load_attendance()
 
 st.title(f"📖 最新讀經進度表（{current_week_display}）")
 
+# 嚴格確保第 1、2 頁籤不變，第 3 頁為雲端資料，第 4 頁為後台
 tab_user, tab_history, tab_resource, tab_admin = st.tabs([
     "✍️ 會友簽到專區", 
     "🗓️ 讀經暨導讀查詢系統", 
@@ -568,7 +576,7 @@ tab_user, tab_history, tab_resource, tab_admin = st.tabs([
 ])
 
 # ------------------------------------------
-# TAB 1: 會友簽到專區
+# TAB 1: 會友簽到專區 (維持原樣)
 # ------------------------------------------
 with tab_user:
     current_img_url = get_gdrive_image_url(PLAN_YEAR, current_week_num)
@@ -685,9 +693,7 @@ with tab_user:
 
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
 
-        is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
-
-       if is_signed:
+        if is_signed:
             st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
         else:
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
@@ -744,7 +750,7 @@ with tab_user:
         st.markdown(f"💬 **心靈補給**：{verse_info['encouragement']}")
 
 # ------------------------------------------
-# TAB 2: 歷史讀經與導讀查詢
+# TAB 2: 歷史讀經與導讀查詢 (維持原樣)
 # ------------------------------------------
 with tab_history:
     st.markdown("### 🗓️ 歷史讀經進度表與導讀查詢")
@@ -819,7 +825,7 @@ with tab_history:
         )
 
 # ------------------------------------------
-# TAB 3: 長者輔助資源
+# TAB 3: 長者輔助資源 (包含認識經卷與有聲導讀)
 # ------------------------------------------
 with tab_resource:
     st.markdown("### 🎧 長者讀經輔助資源（參考專區）")
@@ -827,6 +833,7 @@ with tab_resource:
 
     st.markdown("---")
 
+    # 區塊 1：認識經卷圖框與解說
     st.markdown("#### 📚 認識聖經經卷與背景")
     st.markdown("幫助長輩在讀經前快速了解各卷書的作者、寫作背景與核心主題：")
     
@@ -856,6 +863,7 @@ with tab_resource:
 
     st.markdown("---")
 
+    # 區塊 2：聲音導讀資源
     st.markdown("#### 🎙️ 推薦有聲導讀 / Podcast 資源")
     st.markdown("若長輩看字較吃力，或是希望在休閒、散步時聆聽經文導讀，可參考以下頻道：")
     
@@ -885,6 +893,7 @@ with tab_resource:
 
     st.markdown("---")
 
+    # 區塊 3：實用好幫手與操作提醒
     st.markdown("#### 📱 長輩操作小撇步")
     st.markdown(
         """
@@ -894,7 +903,7 @@ with tab_resource:
     )
 
 # ------------------------------------------
-# TAB 4: 後台統計與管理
+# TAB 4: 後台統計與管理 (第四個頁籤)
 # ------------------------------------------
 with tab_admin:
     st.subheader("🔒 管理者控制台")
