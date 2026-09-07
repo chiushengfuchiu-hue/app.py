@@ -691,8 +691,17 @@ with tab_user:
             st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
         else:
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
-                # 僅呼叫對話框，由對話框內部的按鈕決定是否執行寫入
-                confirm_checkin_dialog(member_name, current_week_display, current_week_key, missing_weeks_info)
+                # 1. 組合要新增的本週與漏掉的記錄
+                records_to_add = [(current_week_key, member_name)]
+                for m_item in missing_weeks_info:
+                    records_to_add.append((m_item["key"], member_name))
+        
+        # 2. 執行批次寫入資料庫
+                add_batch_records(records_to_add)
+        
+        # 3. 提示成功並重新整理頁面，讓畫面立刻變成已簽到狀態
+                st.success("✨ 批次簽到成功！")
+                st.rerun()
 
                 if missing_weeks_info:
                     st.toast(f"🎉 簽到成功！並已自動為您補齊過往 {len(missing_weeks_info)} 週進度！")
