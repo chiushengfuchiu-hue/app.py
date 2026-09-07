@@ -687,21 +687,17 @@ with tab_user:
 
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
 
-        if is_signed:
+       if is_signed:
             st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
         else:
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
-                # 1. 組合要新增的本週與漏掉的記錄
+                confirm_checkin_dialog(member_name, current_week_display, current_week_key, missing_weeks_info)
+                
                 records_to_add = [(current_week_key, member_name)]
                 for m_item in missing_weeks_info:
                     records_to_add.append((m_item["key"], member_name))
-        
-        # 2. 執行批次寫入資料庫
+                
                 add_batch_records(records_to_add)
-        
-        # 3. 提示成功並重新整理頁面，讓畫面立刻變成已簽到狀態
-                st.success("✨ 批次簽到成功！")
-                st.rerun()
 
                 if missing_weeks_info:
                     st.toast(f"🎉 簽到成功！並已自動為您補齊過往 {len(missing_weeks_info)} 週進度！")
