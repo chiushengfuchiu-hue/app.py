@@ -954,7 +954,8 @@ with admin_sub_tab2:
     signed_week_keys = signed_weeks_df["week_key"].tolist()
 
     # 建立全年 52 週的總覽清單
-    all_weeks_list = [{"key": f"Y{PLAN_YEAR}-W{w:02d}", "display": f"第 {PLAN_YEAR} 年 - 第 {w:02d} 週"} for w in range(1, 53)]
+    # 建立過往至當前週次的清單（只顯示到第 current_week_num 週，未來的週次不顯示）
+    all_weeks_list = [{"key": f"Y{PLAN_YEAR}-W{w:02d}", "display": f"第 {PLAN_YEAR} 年 - 第 {w:02d} 週"} for w in range(1, current_week_num + 1)]
 
     signed_data = []
     missing_data = []
