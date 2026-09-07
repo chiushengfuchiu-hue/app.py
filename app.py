@@ -935,9 +935,61 @@ admin_sub_tab1, admin_sub_tab2, admin_sub_tab3 = st.tabs([
 ])
 
 with admin_sub_tab1:
-     # ... (原本的「簽到進度總覽與匯出」程式碼保持不變) ...
-    st.markdown("### 📊 全會友讀經簽到進度總表")
-    # (略...)
+            st.markdown("### 📊 全會友讀經簽到進度總表")
+
+            time_range = st.selectbox(
+                "📅 請選擇匯出與統計時間區間：",
+                ["最近 4 週", "第一季 (W01~W13)", "第二季 (W14~W26)", "第三季 (W27~W39)", "第四季 (W40~W52)", "半年 (26 週)", "全年度 (52 週)"]
+            )
+
+            if time_range == "第一季 (W01~W13)":
+                start_w, end_w = 1, 13
+            elif time_range == "第二季 (W14~W26)":
+                start_w, end_w = 14, 26
+            elif time_range == "第三季 (W27~W39)":
+                start_w, end_w = 27, 39
+            elif time_range == "第四季 (W40~W52)":
+                start_w, end_w = 40, 52
+            elif time_range == "最近 4 週":
+                start_w, end_w = max(1, current_week_num - 3), current_week_num
+            elif time_range == "半年 (26 週)":
+                start_w, end_w = max(1, current_week_num - 25), current_week_num
+            else:
+                start_w, end_w = 1, 52
+
+            df_pivot = generate_pivot_report(PLAN_YEAR, 52)
+            target_cols = ["member_name", "完成週數", "完成率"] + [f"Y{PLAN_YEAR}-W{w:02d}" for w in range(start_w, end_w + 1)]
+            df_pivot_filtered = df_pivot[target_cols]
+
+            st.dataframe(df_pivot_filtered, use_container_width=True, height=400)
+
+            csv_bytes = df_pivot_filtered.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+
+            st.download_button(
+                label=f"📥 下載【{time_range}】簽到統計 Excel 報表 (CSV)",
+                data=csv_bytes,
+                file_name=f"Church_Attendance_{time_range}_{datetime.datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+
+            st.divider()
+            st.markdown("#### 🛠️ 誤簽撤銷 / 刪除紀錄區")
+            col_del1, col_del2, col_del3, col_del4 = st.columns([2, 2, 2, 1.5])
+
+            with col_del1:
+                del_member = st.selectbox("選擇要修正的會友：", member_list)
+            with col_del2:
+                del_year_num = st.number_input("選擇年份：", min_value=1, max_value=4, value=PLAN_YEAR)
+            with col_del3:
+                del_week_num = st.number_input("選擇週數 (1~52)：", min_value=1, max_value=52, value=current_week_num)
+                del_week_key = f"Y{del_year_num}-W{del_week_num:02d}"
+            with col_del4:
+                st.write("")
+                st.write("")
+                if st.button("❌ 撤銷此簽到", type="secondary"):
+                    delete_single_record(del_week_key, del_member)
+                    st.toast(f"已成功刪除 {del_member} 在【{del_week_key}】的紀錄！")
+                    st.rerun()
 
 # ==========================================
 # 新增的子頁籤 2：批次補簽與刪除
