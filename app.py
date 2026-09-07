@@ -685,18 +685,14 @@ with tab_user:
 
         is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
 
+        is_signed = not df_attendance[(df_attendance["week_key"] == current_week_key) & (df_attendance["member_name"] == member_name)].empty
+
         if is_signed:
             st.success(f"🎉 **{member_name}**，您已完成本週讀經進度，願主保守力上加力恩上加恩！")
         else:
             if st.button(f"🟢 若完成【{current_week_display}】請按此簽到", type="primary", use_container_width=True):
-                # 只要呼叫對話框即可，讓使用者在對話框內自己按確認或取消！
+                # 僅呼叫對話框，由對話框內部的按鈕決定是否執行寫入
                 confirm_checkin_dialog(member_name, current_week_display, current_week_key, missing_weeks_info)
-                
-                records_to_add = [(current_week_key, member_name)]
-                for m_item in missing_weeks_info:
-                    records_to_add.append((m_item["key"], member_name))
-                
-                add_batch_records(records_to_add)
 
                 if missing_weeks_info:
                     st.toast(f"🎉 簽到成功！並已自動為您補齊過往 {len(missing_weeks_info)} 週進度！")
