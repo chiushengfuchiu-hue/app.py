@@ -1036,13 +1036,13 @@ with admin_sub_tab2:
 with admin_sub_tab3:
     st.markdown("### 👥 管理會友名單")
 # ... (原本的會友名單編輯程式碼保持不變) ...
-            st.write("可在下方文字框中新增或修改會友姓名（每行一位）：")
+    st.write("可在下方文字框中新增或修改會友姓名（每行一位）：")
 
-            current_m_text = "\n".join(member_list)
-            new_m_text = st.text_area("會友名單列表：", value=current_m_text, height=350)
+    current_m_text = "\n".join(member_list)
+    new_m_text = st.text_area("會友名單列表：", value=current_m_text, height=350)
 
-            if st.button("💾 儲存名單變更"):
-                updated_names = [name.strip() for name in new_m_text.split("\n") if name.strip()]
-                save_members(updated_names)
-                st.success("🎉 會友名單更新成功！")
-                st.rerun()
+    if st.button("💾 儲存名單變更"):
+        updated_names = [name.strip() for name in new_m_text.split("\n") if name.strip()]
+        save_members(updated_names)
+        st.success("🎉 會友名單更新成功！")
+        st.rerun()
