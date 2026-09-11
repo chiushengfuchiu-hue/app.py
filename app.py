@@ -926,15 +926,41 @@ with tab_resource:
     )
 
 # ------------------------------------------
-# TAB 4: 後台統計與管理 (第四個頁籤)
+# TAB 4: 後台統計與管理 (第 4 個頁籤)
 # ------------------------------------------
-admin_sub_tab1, admin_sub_tab2, admin_sub_tab3 = st.tabs([
-    "📊 簽到進度總覽與匯出", 
-    "🛠️ 批次補簽與刪除", 
-    "👥 會友名單編輯"
-])
+with tab_admin:
+    st.markdown("### 🔒 管理員後台登入")
+    
+    # 建立 session_state 紀錄管理員登入狀態
+    if "admin_authenticated" not in st.session_state:
+        st.session_state.admin_authenticated = False
 
-with admin_sub_tab1:
+    # 若未登入，顯示密碼輸入框
+    if not st.session_state.admin_authenticated:
+        pwd_input = st.text_input("請輸入管理員密碼：", type="password", key="admin_pwd_input")
+        if st.button("🔑 登入後台", type="primary"):
+            if pwd_input == ADMIN_PASSWORD:
+                st.session_state.admin_authenticated = True
+                st.success("🔓 驗證成功，正在進入管理後台...")
+                st.rerun()
+            else:
+                st.error("❌ 密碼錯誤，請重新輸入！")
+    else:
+        # 登入成功後才顯示子頁籤與登出按鈕
+        col_title, col_logout = st.columns([4, 1])
+        with col_logout:
+            if st.button("🔒 登出後台", type="secondary"):
+                st.session_state.admin_authenticated = False
+                st.rerun()
+
+        # 縮排重點：子頁籤與後台所有功能必須完全包含在 with tab_admin 和 else 區塊內部！
+        admin_sub_tab1, admin_sub_tab2, admin_sub_tab3 = st.tabs([
+            "📊 簽到進度總覽與匯出", 
+            "🛠️ 批次補簽與刪除", 
+            "👥 會友名單編輯"
+        ])
+
+        with admin_sub_tab1:
             st.markdown("### 📊 全會友讀經簽到進度總表")
 
             time_range = st.selectbox(
@@ -991,111 +1017,100 @@ with admin_sub_tab1:
                     st.toast(f"已成功刪除 {del_member} 在【{del_week_key}】的紀錄！")
                     st.rerun()
 
-# ==========================================
-# 新增的子頁籤 2：批次補簽與刪除
-# ==========================================
-with admin_sub_tab2:
-    st.markdown("### 🛠️ 管理員後台：進度批次補簽與刪除")
-    st.markdown("透過下方介面，您可以選擇特定成員，並使用互動式表格一次性勾選多個過往週次進行**批次補簽**或**批次刪除**。")
-            
-    # 1. 選擇要管理的成員
-    selected_admin_member = st.selectbox("請選擇要管理的成員：", options=member_list, key="admin_select_member")
-
-    # 計算該成員已簽到與未簽到的清單
-    signed_weeks_df = df_attendance[df_attendance["member_name"] == selected_admin_member]
-    signed_week_keys = signed_weeks_df["week_key"].tolist()
-
-    # 建立全年 52 週的總覽清單
-    # 建立過往至當前週次的清單（只顯示到第 current_week_num 週，未來的週次不顯示）
-    all_weeks_list = [{"key": f"Y{PLAN_YEAR}-W{w:02d}", "display": f"第 {PLAN_YEAR} 年 - 第 {w:02d} 週"} for w in range(1, current_week_num + 1)]
-
-    signed_data = []
-    missing_data = []
-
-    for week in all_weeks_list:
-        if week["key"] in signed_week_keys:
-            signed_data.append({"選取刪除": False, "week_key": week["key"], "週次名稱": week["display"]})
-        else:
-            missing_data.append({"選取補簽": False, "week_key": week["key"], "週次名稱": week["display"]})
-
-    df_signed_target = pd.DataFrame(signed_data)
-    df_missing_target = pd.DataFrame(missing_data)
-
-    col1, col2 = st.columns(2)
-
-    # 區塊 A：批次補簽區
-    with col1:
-        st.markdown(f"#### 📥 批次補簽：{selected_admin_member}")
-        st.markdown("勾選以下**尚未完成**的週次，為其批次補登紀錄。")
-                
-        if not df_missing_target.empty:
-            edited_missing_df = st.data_editor(
-                df_missing_target,
-                column_config={
-                    "選取補簽": st.column_config.CheckboxColumn("勾選補簽"),
-                    "week_key": st.column_config.TextColumn("代碼", disabled=True),
-                    "週次名稱": st.column_config.TextColumn("項目", disabled=True)
-                },
-                disabled=["week_key", "週次名稱"],
-                hide_index=True,
-                key="editor_batch_missing"
-            )
+        with admin_sub_tab2:
+            st.markdown("### 🛠️ 管理員後台：進度批次補簽與刪除")
+            st.markdown("透過下方介面，您可以選擇特定成員，並使用互動式表格一次性勾選多個過往週次進行**批次補簽**或**批次刪除**。")
                     
-            if st.button("🚀 確認執行批次補簽", type="primary", key="btn_batch_add"):
-                selected_to_add = edited_missing_df[edited_missing_df["選取補簽"] == True]
-                if selected_to_add.empty:
-                    st.warning("請至少勾選一項要補簽的週次！")
+            selected_admin_member = st.selectbox("請選擇要管理的成員：", options=member_list, key="admin_select_member")
+
+            signed_weeks_df = df_attendance[df_attendance["member_name"] == selected_admin_member]
+            signed_week_keys = signed_weeks_df["week_key"].tolist()
+
+            all_weeks_list = [{"key": f"Y{PLAN_YEAR}-W{w:02d}", "display": f"第 {PLAN_YEAR} 年 - 第 {w:02d} 週"} for w in range(1, current_week_num + 1)]
+
+            signed_data = []
+            missing_data = []
+
+            for week in all_weeks_list:
+                if week["key"] in signed_week_keys:
+                    signed_data.append({"選取刪除": False, "week_key": week["key"], "週次名稱": week["display"]})
                 else:
-                    records_to_add = [(row["week_key"], selected_admin_member) for _, row in selected_to_add.iterrows()]
-                    add_batch_records(records_to_add)
-                    st.success(f"🎉 成功為 {selected_admin_member} 補簽 {len(records_to_add)} 週進度！")
-                    st.cache_data.clear()
-                    st.rerun()
-        else:
-            st.info("該成員目前沒有需要補簽的進度（全數已完成）。")
+                    missing_data.append({"選取補簽": False, "week_key": week["key"], "週次名稱": week["display"]})
 
-    # 區塊 B：批次刪除區
-    with col2:
-        st.markdown(f"#### 🗑️ 批次刪除：{selected_admin_member}")
-        st.markdown("勾選以下**已簽到**的週次，將其批次移除紀錄。")
-                
-        if not df_signed_target.empty:
-            edited_signed_df = st.data_editor(
-                df_signed_target,
-                column_config={
-                    "選取刪除": st.column_config.CheckboxColumn("勾選刪除"),
-                    "week_key": st.column_config.TextColumn("代碼", disabled=True),
-                    "週次名稱": st.column_config.TextColumn("項目", disabled=True)
-                },
-                disabled=["week_key", "週次名稱"],
-                hide_index=True,
-                key="editor_batch_signed"
-            )
-                    
-            if st.button("🗑️ 確認執行批次刪除", type="secondary", key="btn_batch_delete"):
-                selected_to_delete = edited_signed_df[edited_signed_df["選取刪除"] == True]
-                if selected_to_delete.empty:
-                    st.warning("請至少勾選一項要刪除的週次！")
+            df_signed_target = pd.DataFrame(signed_data)
+            df_missing_target = pd.DataFrame(missing_data)
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown(f"#### 📥 批次補簽：{selected_admin_member}")
+                st.markdown("勾選以下**尚未完成**的週次，為其批次補登紀錄。")
+                        
+                if not df_missing_target.empty:
+                    edited_missing_df = st.data_editor(
+                        df_missing_target,
+                        column_config={
+                            "選取補簽": st.column_config.CheckboxColumn("勾選補簽"),
+                            "week_key": st.column_config.TextColumn("代碼", disabled=True),
+                            "週次名稱": st.column_config.TextColumn("項目", disabled=True)
+                        },
+                        disabled=["week_key", "週次名稱"],
+                        hide_index=True,
+                        key="editor_batch_missing"
+                    )
+                            
+                    if st.button("🚀 確認執行批次補簽", type="primary", key="btn_batch_add"):
+                        selected_to_add = edited_missing_df[edited_missing_df["選取補簽"] == True]
+                        if selected_to_add.empty:
+                            st.warning("請至少勾選一項要補簽的週次！")
+                        else:
+                            records_to_add = [(row["week_key"], selected_admin_member) for _, row in selected_to_add.iterrows()]
+                            add_batch_records(records_to_add)
+                            st.success(f"🎉 成功為 {selected_admin_member} 補簽 {len(records_to_add)} 週進度！")
+                            st.cache_data.clear()
+                            st.rerun()
                 else:
-                    for _, row in selected_to_delete.iterrows():
-                        delete_single_record(row["week_key"], selected_admin_member)
-                    st.success(f"🗑️ 成功為 {selected_admin_member} 刪除 {len(selected_to_delete)} 週紀錄並同步 Google Sheets！")
-                    st.cache_data.clear()
-                    st.rerun()
-        else:
-            st.info("該成員目前沒有任何簽到紀錄可供刪除。")
+                    st.info("該成員目前沒有需要補簽的進度（全數已完成）。")
 
-# 原本的會友名單編輯
-with admin_sub_tab3:
-    st.markdown("### 👥 管理會友名單")
-# ... (原本的會友名單編輯程式碼保持不變) ...
-    st.write("可在下方文字框中新增或修改會友姓名（每行一位）：")
+            with col2:
+                st.markdown(f"#### 🗑️ 批次刪除：{selected_admin_member}")
+                st.markdown("勾選以下**已簽到**的週次，將其批次移除紀錄。")
+                        
+                if not df_signed_target.empty:
+                    edited_signed_df = st.data_editor(
+                        df_signed_target,
+                        column_config={
+                            "選取刪除": st.column_config.CheckboxColumn("勾選刪除"),
+                            "week_key": st.column_config.TextColumn("代碼", disabled=True),
+                            "週次名稱": st.column_config.TextColumn("項目", disabled=True)
+                        },
+                        disabled=["week_key", "週次名稱"],
+                        hide_index=True,
+                        key="editor_batch_signed"
+                    )
+                            
+                    if st.button("🗑️ 確認執行批次刪除", type="secondary", key="btn_batch_delete"):
+                        selected_to_delete = edited_signed_df[edited_signed_df["選取刪除"] == True]
+                        if selected_to_delete.empty:
+                            st.warning("請至少勾選一項要刪除的週次！")
+                        else:
+                            for _, row in selected_to_delete.iterrows():
+                                delete_single_record(row["week_key"], selected_admin_member)
+                            st.success(f"🗑️ 成功為 {selected_admin_member} 刪除 {len(selected_to_delete)} 週紀錄並同步 Google Sheets！")
+                            st.cache_data.clear()
+                            st.rerun()
+                else:
+                    st.info("該成員目前沒有任何簽到紀錄可供刪除。")
 
-    current_m_text = "\n".join(member_list)
-    new_m_text = st.text_area("會友名單列表：", value=current_m_text, height=350)
+        with admin_sub_tab3:
+            st.markdown("### 👥 管理會友名單")
+            st.write("可在下方文字框中新增或修改會友姓名（每行一位）：")
 
-    if st.button("💾 儲存名單變更"):
-        updated_names = [name.strip() for name in new_m_text.split("\n") if name.strip()]
-        save_members(updated_names)
-        st.success("🎉 會友名單更新成功！")
-        st.rerun()
+            current_m_text = "\n".join(member_list)
+            new_m_text = st.text_area("會友名單列表：", value=current_m_text, height=350)
+
+            if st.button("💾 儲存名單變更"):
+                updated_names = [name.strip() for name in new_m_text.split("\n") if name.strip()]
+                save_members(updated_names)
+                st.success("🎉 會友名單更新成功！")
+                st.rerun()
