@@ -610,7 +610,30 @@ tab_user, tab_history, tab_resource, tab_admin = st.tabs([
     "📖 讀經資源專區",
     "🔒 後台統計管理"
 ])
+# ==========================================
+# 7. 主介面資料預載 (全域轉圈提示包覆)
+# ==========================================
+if "current_member" not in st.session_state:
+    st.session_state.current_member = None
 
+PLAN_YEAR, current_week_num = get_current_year_and_week()
+current_week_key = f"Y{PLAN_YEAR}-W{current_week_num:02d}"
+current_week_display = f"第 {PLAN_YEAR} 年 - 第 {current_week_num:02d} 週"
+
+# 💡 全域資料載入轉圈提醒
+with st.spinner("⏳ 資料更新中，請稍候... (正在載入簽到系統資料)"):
+    df_members = load_members()
+    member_list = df_members["member_name"].tolist()
+    df_attendance = load_attendance()
+
+st.title(f"📖 最新讀經進度表（{current_week_display}）")
+
+tab_user, tab_history, tab_resource, tab_admin = st.tabs([
+    "✍️ 會友簽到專區",
+    "🗓️ 讀經暨導讀查詢系統",
+    "📖 讀經資源專區",
+    "🔒 後台統計管理",
+])
 # ------------------------------------------
 # TAB 1: 會友簽到專區 (維持原樣)
 # ------------------------------------------
