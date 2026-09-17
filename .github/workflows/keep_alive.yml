@@ -1,0 +1,44 @@
+name: Wake Up Streamlit Apps
+
+on:
+  # 設定排程：例如每 4 小時自動執行一次（可依需求調整 cron 時間）
+  schedule:
+    - cron: '0 */4 * * *' 
+  
+  # 讓您可以手動從 GitHub 介面按按鈕觸發測試
+  workflow_dispatch:
+
+jobs:
+  ping-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Ping and Wake Up Apps
+        run: |
+          python -c "
+          import requests
+          
+          # 將您兩個要喚醒的 Streamlit 網址放進來
+          urls = [
+              'https://2wtptgzdvbrcapdinnlau7.streamlit.app',
+              'https://younger-biblecheckin-8ltpl3g9hoxqngx6sjswgr.streamlit.app/'
+          ]
+          
+          for url in urls:
+              try:
+                  response = requests.get(url, timeout=120)
+                  print(f'成功訪問 {url}，狀態碼: {response.status_code}')
+              except Exception as e:
+                  print(f'訪問 {url} 發生錯誤: {e}')
+          "
